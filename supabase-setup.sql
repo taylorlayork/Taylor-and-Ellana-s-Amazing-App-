@@ -242,3 +242,42 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+-- v71 clean: Feelings tracker
+create table if not exists public.feelings (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  author text not null check (author in ('Taylor', 'Ellana')),
+  emotion text not null,
+  note text
+);
+
+alter table public.feelings enable row level security;
+grant select, insert, delete on table public.feelings to anon, authenticated;
+
+drop policy if exists "Feelings are readable" on public.feelings;
+create policy "Feelings are readable"
+on public.feelings
+for select
+using (true);
+
+drop policy if exists "Feelings can be added" on public.feelings;
+create policy "Feelings can be added"
+on public.feelings
+for insert
+with check (author in ('Taylor', 'Ellana'));
+
+drop policy if exists "Feelings can be deleted" on public.feelings;
+create policy "Feelings can be deleted"
+on public.feelings
+for delete
+using (true);
+
+alter table public.feelings replica identity full;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.feelings;
+exception
+  when duplicate_object then null;
+end $$;

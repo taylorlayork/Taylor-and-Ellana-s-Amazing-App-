@@ -257,3 +257,10 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 ## v70-clean update
 - Added a tiny visible version badge (`v70`) inside the main title slab so deployed builds are easy to confirm.
 - Updated service worker cache to `across-static-v70-clean`.
+
+## v71-clean-from-v56
+- Added a polished `v71` badge in the same small pill style on desktop and iPhone.
+- Added a new Feelings tab to the bottom navigation.
+- Added a two-column Taylor/Ellana feelings tracker.
+- Feelings are saved newest-first with date/time and optional notes.
+- Added Supabase `feelings` table and realtime setup in `supabase-setup.sql`.

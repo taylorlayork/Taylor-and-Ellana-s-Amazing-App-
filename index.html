@@ -44,7 +44,7 @@
       <div class="hero-card">
         <p class="eyebrow">Ingleside, IL ↔ Sydney, NSW</p>
         <h1>Taylor &amp; Ellana's Amazing App!</h1>
-        <span class="app-version-badge" aria-label="Current app version">v70</span>
+        <span class="app-version-badge" aria-label="Current app version">v71</span>
         <div class="actions hero-actions">
           <button id="refreshAll">Refresh live data</button>
           <button id="openSettings" class="secondary">Edit names & dates</button>
@@ -114,6 +114,30 @@
         <div id="posterFeed" class="poster-feed"></div>
       </section>
 
+      <section id="feelings" class="panel page-section feelings-panel" data-tab-panel="feelings">
+        <div class="section-title"><p class="eyebrow">Daily check-in</p><h2>Feelings</h2><p>Pick how you feel right now. Your newest feeling goes to the top of your own column.</p></div>
+        <article class="card feelings-composer">
+          <div class="feelings-composer-head">
+            <div><strong id="feelingsCurrentAuthor">Taylor</strong><span class="muted"> is checking in</span></div>
+            <button id="feelingsChangeAuthor" class="secondary" type="button">Change user</button>
+          </div>
+          <div id="feelingChoices" class="feeling-choice-grid" aria-label="Choose current feeling"></div>
+          <label class="feelings-note-wrap">Optional note<textarea id="feelingNote" rows="2" placeholder="Tiny reason, if you want…"></textarea></label>
+          <div class="actions compact-actions"><button id="saveFeelingBtn" type="button">Add feeling</button></div>
+          <p id="feelingsStatus" class="poster-status muted"></p>
+        </article>
+        <div class="feelings-columns">
+          <article class="feeling-column-card card" data-feeling-column="Taylor">
+            <div class="feeling-column-title"><span>🫶</span><h3>Taylor</h3></div>
+            <div id="feelingsTaylor" class="feelings-list"></div>
+          </article>
+          <article class="feeling-column-card card" data-feeling-column="Ellana">
+            <div class="feeling-column-title"><span>💖</span><h3>Ellana</h3></div>
+            <div id="feelingsEllana" class="feelings-list"></div>
+          </article>
+        </div>
+      </section>
+
       <section id="extras" class="panel grid two page-section" data-tab-panel="extras">
         <div class="section-title full"><p class="eyebrow">Extras</p><h2>Helpful extras to keep handy</h2></div>
         <article class="card full">
@@ -157,7 +181,8 @@
     <button class="tab-slab active" type="button" data-app-tab="time" aria-current="page"><span>Time</span></button>
     <button class="tab-slab" type="button" data-app-tab="weather"><span>Weather</span></button>
     <button class="tab-slab" type="button" data-app-tab="poster"><span>Poster Board</span></button>
-    <button class="tab-slab" type="button" data-app-tab="vacation"><span>Vacation Schedule Helper</span></button>
+    <button class="tab-slab" type="button" data-app-tab="feelings"><span>Feelings</span></button>
+    <button class="tab-slab" type="button" data-app-tab="vacation"><span>Vacation</span></button>
     <button class="tab-slab" type="button" data-app-tab="extras"><span>Extras</span></button>
   </nav>
   <button class="nav-home-button" id="navHomeButton" type="button" aria-label="Open navigation" hidden>⌂</button>

@@ -1362,7 +1362,7 @@ function updateTabIndicator(tabbar, activeButton, options = {}) {
 }
 
 function getCurrentTabOrder() {
-  const fallback = ['time', 'weather', 'poster', 'vacation', 'extras'];
+  const fallback = ['time', 'weather', 'poster', 'feelings', 'vacation', 'extras'];
   try {
     const stored = JSON.parse(localStorage.getItem('across.tabOrder'));
     if (Array.isArray(stored) && fallback.every(tab => stored.includes(tab))) return stored.filter(tab => fallback.includes(tab));
@@ -1460,7 +1460,7 @@ function initBottomTabs() {
   let tabs = getOrderedTabs();
   if (!tabs.length) return;
   const hashTab = location.hash ? location.hash.replace('#', '') : '';
-  const hashMap = { times: 'time', calls: 'time', extras: 'extras', differences: 'extras', weather: 'weather', poster: 'poster', holidays: 'vacation', planner: 'vacation' };
+  const hashMap = { times: 'time', calls: 'time', extras: 'extras', differences: 'extras', weather: 'weather', poster: 'poster', feelings: 'feelings', holidays: 'vacation', planner: 'vacation' };
 
   const activateButton = (button, options = {}) => {
     if (!button) return;
@@ -1967,6 +1967,7 @@ function setPosterAuthorUi(value = posterCurrentAuthor || loadPosterAuthor()) {
   savePosterAuthor(author);
   const label = $('#posterCurrentAuthor');
   if (label) label.textContent = author;
+  updateFeelingsAuthorUi?.();
   const row = document.querySelector('.poster-user-row');
   if (row) row.dataset.currentAuthor = author;
   document.querySelectorAll('[data-poster-author-choice]').forEach(button => {
@@ -2614,6 +2615,133 @@ function initPosterComposerToggle() {
   setPosterComposerOpen(false);
   onIf('#togglePosterComposer', 'click', togglePosterComposer);
 }
+
+const FEELING_OPTIONS = [
+  { emoji: '🥰', label: 'Loved' },
+  { emoji: '😊', label: 'Happy' },
+  { emoji: '😌', label: 'Calm' },
+  { emoji: '🥺', label: 'Tender' },
+  { emoji: '😔', label: 'Sad' },
+  { emoji: '😰', label: 'Anxious' },
+  { emoji: '😤', label: 'Frustrated' },
+  { emoji: '😴', label: 'Tired' },
+  { emoji: '🤪', label: 'Silly' },
+  { emoji: '💭', label: 'Thinking' },
+  { emoji: '🔥', label: 'Motivated' },
+  { emoji: '🫶', label: 'Missing you' }
+];
+let selectedFeeling = FEELING_OPTIONS[1]?.label || 'Happy';
+let feelingsRows = [];
+let feelingsChannel = null;
+
+function feelingOptionFor(label) {
+  return FEELING_OPTIONS.find(item => item.label === label) || { emoji: '💗', label: label || 'Feeling' };
+}
+function setFeelingsStatus(message, isError = false) {
+  const el = $('#feelingsStatus');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('error', Boolean(isError));
+}
+function updateFeelingsAuthorUi() {
+  const author = posterCurrentAuthor || loadPosterAuthor();
+  const label = $('#feelingsCurrentAuthor');
+  if (label) label.textContent = author;
+}
+function renderFeelingChoices() {
+  const wrap = $('#feelingChoices');
+  if (!wrap) return;
+  wrap.innerHTML = FEELING_OPTIONS.map(item => {
+    const active = item.label === selectedFeeling;
+    return `<button type="button" class="feeling-choice-button ${active ? 'active' : ''}" data-feeling-choice="${escapeHtml(item.label)}" aria-pressed="${active}"><span class="emoji">${escapeHtml(item.emoji)}</span><span class="label">${escapeHtml(item.label)}</span></button>`;
+  }).join('');
+}
+function renderFeelings() {
+  const groups = { Taylor: [], Ellana: [] };
+  feelingsRows.forEach(row => {
+    const author = row.author === 'Taylor' ? 'Taylor' : 'Ellana';
+    groups[author].push(row);
+  });
+  const renderList = (items, author) => {
+    if (!items.length) return `<p class="feelings-empty">No feelings yet for ${escapeHtml(author)}.</p>`;
+    return items.slice(0, 40).map(row => {
+      const option = feelingOptionFor(row.emotion);
+      const date = row.created_at ? new Date(row.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+      const note = row.note ? `<p>${escapeHtml(row.note)}</p>` : '';
+      return `<div class="feeling-entry"><div class="feeling-entry-main"><span class="emoji">${escapeHtml(option.emoji)}</span><span>${escapeHtml(option.label)}</span></div><time>${escapeHtml(date)}</time>${note}</div>`;
+    }).join('');
+  };
+  const taylor = $('#feelingsTaylor');
+  const ellana = $('#feelingsEllana');
+  if (taylor) taylor.innerHTML = renderList(groups.Taylor, 'Taylor');
+  if (ellana) ellana.innerHTML = renderList(groups.Ellana, 'Ellana');
+  updateFeelingsAuthorUi();
+  renderFeelingChoices();
+}
+async function loadFeelings(options = {}) {
+  const client = getPosterClient();
+  if (!client) {
+    setFeelingsStatus('Finish Supabase setup first so feelings can sync.', true);
+    renderFeelings();
+    return;
+  }
+  const { data, error } = await client
+    .from('feelings')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    setFeelingsStatus(error.message || 'Feelings could not load. Run the updated supabase-setup.sql.', true);
+    return;
+  }
+  feelingsRows = Array.isArray(data) ? data : [];
+  renderFeelings();
+  if (!options.silent) setFeelingsStatus('');
+}
+async function saveFeeling() {
+  const client = getPosterClient();
+  if (!client) {
+    setFeelingsStatus('Finish Supabase setup first so feelings can sync.', true);
+    return;
+  }
+  const author = posterAuthor();
+  const note = ($('#feelingNote')?.value || '').trim();
+  try {
+    setFeelingsStatus('Adding feeling…');
+    const { error } = await client.from('feelings').insert({
+      author,
+      emotion: selectedFeeling,
+      note: note || null
+    });
+    if (error) throw error;
+    const noteEl = $('#feelingNote');
+    if (noteEl) noteEl.value = '';
+    await loadFeelings({ silent: true });
+    setFeelingsStatus('Feeling added.');
+  } catch (error) {
+    setFeelingsStatus(error.message || 'Could not add feeling. Run the updated supabase-setup.sql.', true);
+  }
+}
+function subscribeFeelingsRealtime() {
+  const client = getPosterClient();
+  if (!client || feelingsChannel) return;
+  feelingsChannel = client
+    .channel('feelings-board')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'feelings' }, () => loadFeelings({ silent: true }))
+    .subscribe();
+}
+function initFeelings() {
+  updateFeelingsAuthorUi();
+  renderFeelingChoices();
+  renderFeelings();
+  if (hasPosterConfig()) {
+    loadFeelings().catch(error => setFeelingsStatus(error.message || 'Feelings could not load.', true));
+    try { subscribeFeelingsRealtime(); } catch (error) { console.warn('Feelings realtime failed:', error); }
+  } else {
+    setFeelingsStatus('Finish Supabase setup first so feelings can sync.', true);
+  }
+}
+
 function initPosterBoard() {
   initPosterAuthorPicker();
   initPosterComposerToggle();
@@ -2660,6 +2788,11 @@ function attachEvents() {
     $('#posterUserDialog')?.showModal();
   });
   onIf('#closePosterUserDialog', 'click', () => $('#posterUserDialog')?.close());
+  onIf('#feelingsChangeAuthor', 'click', () => {
+    setPosterAuthorUi(posterAuthor());
+    $('#posterUserDialog')?.showModal();
+  });
+  onIf('#saveFeelingBtn', 'click', saveFeeling);
   onIf('#postMessageBtn', 'click', postPosterMessage);
   onIf('#postPhotoBtn', 'click', postPosterPhoto);
   onIf('#postDrawingBtn', 'click', postPosterDrawing);
@@ -2681,12 +2814,20 @@ function attachEvents() {
       togglePosterNote(noteToggle.dataset.noteTarget, noteToggle);
       return;
     }
+    const feelingChoice = event.target.closest('[data-feeling-choice]');
+    if (feelingChoice) {
+      event.preventDefault();
+      selectedFeeling = feelingChoice.dataset.feelingChoice || selectedFeeling;
+      renderFeelingChoices();
+      return;
+    }
     const authorChoice = event.target.closest('[data-poster-author-choice]');
     if (authorChoice) {
       event.preventDefault();
       setPosterAuthorUi(authorChoice.dataset.posterAuthorChoice);
       $('#posterUserDialog')?.close();
       renderPosterFeed(posterPosts, { keepSeenState: true });
+      renderFeelings();
       return;
     }
     const reactButton = event.target.closest('[data-react-poster-id]');
@@ -2839,6 +2980,7 @@ async function init() {
   try { initHolidayBubbleDismissal(); } catch (err) { console.warn('Holiday bubble dismissal failed:', err); }
   try { initDialogBackdropClose(); } catch (err) { console.warn(err); }
   try { initPosterBoard(); } catch (err) { console.warn('Poster Board init failed:', err); }
+  try { initFeelings(); } catch (err) { console.warn('Feelings init failed:', err); }
   try { convertFromF(); } catch (err) { console.warn(err); }
   try { renderSettings(); } catch (err) { console.warn(err); }
   try { renderFxNote(); } catch (err) { console.warn(err); }
