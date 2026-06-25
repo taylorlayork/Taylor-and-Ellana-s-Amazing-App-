@@ -243,14 +243,31 @@ exception
   when duplicate_object then null;
 end $$;
 
--- v71 clean: Feelings tracker
+-- v73 clean: Feelings tracker
+-- Keeps compatibility with an older experimental table that used `feeling` instead of `emotion`.
 create table if not exists public.feelings (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   author text not null check (author in ('Taylor', 'Ellana')),
-  emotion text not null,
+  emotion text,
+  feeling text,
   note text
 );
+
+alter table public.feelings add column if not exists created_at timestamptz not null default now();
+alter table public.feelings add column if not exists author text;
+alter table public.feelings add column if not exists emotion text;
+alter table public.feelings add column if not exists feeling text;
+alter table public.feelings add column if not exists note text;
+
+update public.feelings
+set emotion = coalesce(emotion, feeling),
+    feeling = coalesce(feeling, emotion)
+where emotion is null or feeling is null;
+
+-- The app now writes both columns, but dropping strict not-null avoids old-schema conflicts.
+alter table public.feelings alter column emotion drop not null;
+alter table public.feelings alter column feeling drop not null;
 
 alter table public.feelings enable row level security;
 grant select, insert, delete on table public.feelings to anon, authenticated;
@@ -281,3 +298,6 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+-- Tell Supabase/PostgREST to refresh the schema cache after column changes.
+notify pgrst, 'reload schema';

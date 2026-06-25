@@ -264,3 +264,15 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - Added a two-column Taylor/Ellana feelings tracker.
 - Feelings are saved newest-first with date/time and optional notes.
 - Added Supabase `feelings` table and realtime setup in `supabase-setup.sql`.
+
+
+## v73-clean-from-v56
+- Fixed navigation icons by binding each icon to its tab identity instead of its position.
+- Feelings now consistently uses the double-heart icon on desktop and iPhone.
+- Forced all six navigation buttons to stay in one clean row across desktop and app layouts.
+- Updated visible version badge and service worker cache to v73-clean.
+
+## v73-clean-from-v56
+- Fixed Feelings schema compatibility by writing both `emotion` and legacy `feeling`.
+- Updated Supabase setup to add/sync both columns and reload the PostgREST schema cache.
+- Updated visible version badge and service worker cache to v73-clean.

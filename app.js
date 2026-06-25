@@ -2665,7 +2665,7 @@ function renderFeelings() {
   const renderList = (items, author) => {
     if (!items.length) return `<p class="feelings-empty">No feelings yet for ${escapeHtml(author)}.</p>`;
     return items.slice(0, 40).map(row => {
-      const option = feelingOptionFor(row.emotion);
+      const option = feelingOptionFor(row.emotion || row.feeling);
       const date = row.created_at ? new Date(row.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
       const note = row.note ? `<p>${escapeHtml(row.note)}</p>` : '';
       return `<div class="feeling-entry"><div class="feeling-entry-main"><span class="emoji">${escapeHtml(option.emoji)}</span><span>${escapeHtml(option.label)}</span></div><time>${escapeHtml(date)}</time>${note}</div>`;
@@ -2711,6 +2711,7 @@ async function saveFeeling() {
     const { error } = await client.from('feelings').insert({
       author,
       emotion: selectedFeeling,
+      feeling: selectedFeeling,
       note: note || null
     });
     if (error) throw error;

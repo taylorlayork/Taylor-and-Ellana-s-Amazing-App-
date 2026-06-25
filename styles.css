@@ -4280,3 +4280,74 @@ body.is-standalone-app .bottom-tabbar {
   .feelings-columns { grid-template-columns: 1fr; }
   .feeling-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* v72-clean: lock nav icons to tab identity and keep all six tabs in one row everywhere */
+.bottom-tabbar,
+body .bottom-tabbar,
+body.is-standalone-app .bottom-tabbar {
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  grid-template-rows: 1fr !important;
+  align-items: stretch !important;
+  justify-items: stretch !important;
+  overflow: visible !important;
+  width: min(940px, calc(100vw - 1rem)) !important;
+  max-width: 940px !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translate3d(-50%, 0, 0) scale(1) !important;
+}
+.bottom-tabbar .tab-slab,
+body.is-standalone-app .bottom-tabbar .tab-slab {
+  min-width: 0 !important;
+  width: auto !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.bottom-tabbar .tab-slab span {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.bottom-tabbar .tab-slab[data-app-tab="time"]::before { content: '⏰' !important; }
+.bottom-tabbar .tab-slab[data-app-tab="weather"]::before { content: '☀️' !important; }
+.bottom-tabbar .tab-slab[data-app-tab="poster"]::before { content: '🖼️' !important; }
+.bottom-tabbar .tab-slab[data-app-tab="feelings"]::before { content: '💞' !important; }
+.bottom-tabbar .tab-slab[data-app-tab="vacation"]::before { content: '✈️' !important; }
+.bottom-tabbar .tab-slab[data-app-tab="extras"]::before { content: '✨' !important; }
+@media (hover: hover) and (pointer: fine) {
+  body .bottom-tabbar,
+  body.nav-visible-on-scroll .bottom-tabbar,
+  body.nav-open-from-home .bottom-tabbar,
+  body.nav-touching .bottom-tabbar,
+  body .bottom-tabbar.is-dragging {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    width: min(940px, calc(100vw - 2rem)) !important;
+    max-width: 940px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translate3d(-50%, 0, 0) scale(1) !important;
+  }
+}
+@media (max-width: 780px) {
+  .bottom-tabbar,
+  body.is-standalone-app .bottom-tabbar {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    width: min(100vw - .52rem, 760px) !important;
+    gap: .14rem !important;
+    padding: .26rem !important;
+  }
+  .bottom-tabbar .tab-slab,
+  body.is-standalone-app .bottom-tabbar .tab-slab {
+    min-height: 3rem !important;
+    padding: .28rem .05rem !important;
+    font-size: clamp(.47rem, 2vw, .62rem) !important;
+  }
+  .bottom-tabbar .tab-slab::before {
+    font-size: .98rem !important;
+    margin-bottom: .14rem !important;
+  }
+}
