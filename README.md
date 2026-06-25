@@ -220,3 +220,15 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - Calendar holiday speech bubbles are now anchored from the exact tapped date cell.
 - Holiday bubble positioning uses the visible iPhone viewport and keeps the arrow aimed at the selected date.
 - Cache updated to `across-static-v64-clean`.
+
+
+## v65 clean from v56
+- Restored calendar holiday bubble positioning for desktop by anchoring the bubble inside the calendar container instead of the fixed viewport.
+- Holiday bubbles now scroll with the calendar/page so they stay attached to the date area where they appeared.
+- Cache updated to `across-static-v65-clean`.
+
+
+## v66 clean from v56
+- Calendar holiday bubbles now automatically disappear when leaving the Vacation/calendar page or switching to another section/tab.
+- Re-rendering holiday data also clears any old bubble/selected date state.
+- Cache updated to `across-static-v66-clean`.

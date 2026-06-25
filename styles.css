@@ -347,7 +347,7 @@ main { display: grid; gap: 1.05rem; }
 .temp-converter-card .muted { margin-bottom: 0; }
 
 
-.holiday-calendar-wrap { margin: .8rem 0 1rem; }
+.holiday-calendar-wrap { margin: .8rem 0 1rem; position: relative; }
 .holiday-legend { display: flex; align-items: center; gap: .45rem .65rem; flex-wrap: wrap; color: var(--muted); font-size: .85rem; margin-bottom: .75rem; }
 .legend-dot, .marker { display: inline-block; width: .72rem; height: .72rem; border-radius: 999px; vertical-align: middle; }
 .us-dot { background: var(--brand2); }
@@ -3756,8 +3756,8 @@ body.is-standalone-app.nav-hidden-on-scroll .bottom-tabbar {
   box-shadow: 0 8px 18px rgba(45,51,69,.15), inset 0 0 0 1.5px rgba(139,92,246,.45);
 }
 .holiday-touch-detail {
-  position: fixed;
-  z-index: 1200;
+  position: absolute;
+  z-index: 40;
   margin: 0;
   border: 1px solid rgba(139,92,246,.26);
   background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,246,253,.94));

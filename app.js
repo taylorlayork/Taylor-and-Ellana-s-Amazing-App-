@@ -728,36 +728,36 @@ function buildHolidayMonth(monthKey, byDate, filter) {
 
 
 function eachDate(startIso, endIso){ const out=[]; let d=new Date(`${startIso}T12:00:00Z`); const end=new Date(`${endIso}T12:00:00Z`); while(d<=end){ out.push(d.toISOString().slice(0,10)); d=new Date(d.getTime()+86400000); } return out; }
-function holidayBubbleElement() {
+function holidayBubbleElement(cell) {
   let box = $('#holidayTouchDetail');
+  const wrap = cell?.closest?.('.holiday-calendar-wrap') || $('#holidayCalendar');
   if (!box) {
     box = document.createElement('div');
     box.id = 'holidayTouchDetail';
     box.className = 'holiday-touch-detail';
     box.hidden = true;
   }
-  if (box.parentElement !== document.body) document.body.appendChild(box);
+  if (wrap && box.parentElement !== wrap) wrap.appendChild(box);
   return box;
 }
 
 function positionHolidayBubble(box, cell) {
   if (!box || !cell) return;
-  const rect = cell.getBoundingClientRect();
-  const vv = window.visualViewport;
-  // Fixed-position elements use visible viewport coordinates. Do not add
-  // visualViewport.offsetTop/offsetLeft here, or iPhone Home Screen mode can
-  // push the bubble far away from the tapped date.
-  const viewportWidth = vv ? vv.width : window.innerWidth;
-  const viewportHeight = vv ? vv.height : window.innerHeight;
-  const safeLeft = 10;
-  const safeRight = viewportWidth - 10;
-  const safeTop = 10;
-  const safeBottom = viewportHeight - 10;
+  const wrap = cell.closest('.holiday-calendar-wrap') || $('#holidayCalendar');
+  if (!wrap) return;
+  const cellRect = cell.getBoundingClientRect();
+  const wrapRect = wrap.getBoundingClientRect();
+  const wrapScrollLeft = wrap.scrollLeft || 0;
+  const wrapScrollTop = wrap.scrollTop || 0;
   const gap = 9;
-  const targetX = rect.left + (rect.width / 2);
-  const belowY = rect.bottom + gap;
-  const aboveY = rect.top - gap;
-  const width = Math.min(248, Math.max(178, viewportWidth - 28));
+  const minWidth = Math.min(178, Math.max(140, wrap.clientWidth - 24));
+  const width = Math.min(248, Math.max(minWidth, Math.min(wrap.clientWidth - 20, 248)));
+  const targetX = (cellRect.left - wrapRect.left) + wrapScrollLeft + (cellRect.width / 2);
+  const belowY = (cellRect.bottom - wrapRect.top) + wrapScrollTop + gap;
+  const aboveY = (cellRect.top - wrapRect.top) + wrapScrollTop - gap;
+  const safeLeft = 8;
+  const safeRight = Math.max(width + safeLeft, wrap.clientWidth - 8);
+  const safeTop = 8;
 
   box.style.width = `${width}px`;
   box.style.left = '0px';
@@ -768,13 +768,13 @@ function positionHolidayBubble(box, cell) {
 
   const bubbleRect = box.getBoundingClientRect();
   const height = bubbleRect.height || 70;
+  const visibleBottom = wrapScrollTop + wrap.clientHeight - 10;
   let top = belowY;
-  if (top + height > safeBottom && aboveY - height >= safeTop) {
+  if (top + height > visibleBottom && aboveY - height >= safeTop) {
     top = aboveY - height;
     box.classList.add('bubble-above');
-  } else if (top + height > safeBottom) {
-    top = Math.max(safeTop, safeBottom - height);
   }
+  top = Math.max(safeTop, top);
 
   let left = targetX - (width / 2);
   left = Math.max(safeLeft, Math.min(left, safeRight - width));
@@ -787,7 +787,7 @@ function positionHolidayBubble(box, cell) {
 }
 
 function showHolidayTouchDetail(cell) {
-  const box = holidayBubbleElement();
+  const box = holidayBubbleElement(cell);
   if (!box || !cell) return;
   const detail = cell.dataset.holidayDetail || '';
   const date = cell.dataset.holidayDate || '';
@@ -801,6 +801,17 @@ function showHolidayTouchDetail(cell) {
   const rows = detail.split(';;').filter(Boolean).map(item => `<span>${escapeHtml(item)}</span>`).join('');
   box.innerHTML = `<strong>${displayIsoDate(date)}</strong>${rows}`;
   positionHolidayBubble(box, cell);
+}
+
+
+function hideHolidayTouchDetail() {
+  const box = $('#holidayTouchDetail');
+  if (box) {
+    box.hidden = true;
+    box.innerHTML = '';
+    box.style.transform = '';
+  }
+  document.querySelectorAll('.calendar-cell.is-selected').forEach(el => el.classList.remove('is-selected'));
 }
 
 function holidayMapByDate() {
@@ -1173,6 +1184,7 @@ function moveMagnetDotTo(link, instant = false) {
 }
 
 function setActiveSection(sectionId, options = {}) {
+  if (sectionId !== 'holidays') hideHolidayTouchDetail();
   const { links } = getSideNavElements();
   let activeLink = null;
   links.forEach(link => {
@@ -1274,6 +1286,7 @@ function setActiveAppTab(tab, options = {}) {
     }
   });
   document.body.dataset.activeTab = nextTab;
+  if (nextTab !== 'vacation') hideHolidayTouchDetail();
   try { localStorage.setItem('across.activeTab', nextTab); } catch (_) {}
   try { handlePosterTabVisibility(nextTab); } catch (_) {}
   if (options.scroll) {
@@ -2723,6 +2736,9 @@ function attachEvents() {
       event.preventDefault();
       showHolidayTouchDetail(holidayCell);
       return;
+    }
+    if (event.target.closest('[data-app-tab], [data-section-link]') && !event.target.closest('[data-section-link="holidays"]')) {
+      hideHolidayTouchDetail();
     }
     const tempButton = event.target.closest('[data-temp-toggle]');
     if (tempButton) toggleWeatherUnit(tempButton.dataset.tempToggle);
