@@ -181,3 +181,37 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - Uses a clean absolute JPEG Open Graph image URL (`preview-image.jpg`) first for Messenger/Facebook previews, with PNG as backup.
 - Removes the `?v=53` query string from the social preview image metadata.
 - Updates the service worker cache to `across-static-v56`.
+
+
+## v58 notes
+- Adds a splash screen, email OTP login, visitor mode, and public/private Poster Board visibility.
+- Update `supabase-config.js` with the real Taylor and Ellana emails under `allowedUsers`.
+- Run the new `supabase-setup.sql` after uploading this build.
+
+
+## v58 account setup
+- Taylor is preconfigured as `taylorlayork@yahoo.com`.
+- Ellana does not need to be known in advance. The first non-Taylor email that signs in and passes the claim flow becomes Ellana.
+- Run `supabase-setup.sql` again so the `claim_ellana_account()` function exists.
+
+## v59 notes
+- Moves Poster Board delete controls to the right side of the post header.
+- Replaces reply "Use current drawing" with a fresh full-screen reply drawing canvas.
+- Adds inline holiday details when tapping vacation/holiday calendar dates instead of a distracting popup.
+- Simplifies social/iMessage preview metadata to one clean JPG image to avoid duplicate stacked previews.
+
+
+## v60 notes
+- The trip suggestion section is collapsed by default and opens only after tapping its header.
+
+
+## v61 notes
+- Adds a Feelings page with Taylor/Ellana columns and timestamped daily entries.
+- Adds heart-envelope surprise messages with realtime pop-up reveal.
+- Run the updated `supabase-setup.sql` so the new `feelings` and `heart_messages` tables exist.
+
+
+## v62 notes
+- Heart-envelope messages now show read receipts for sent notes.
+- When the other person opens your envelope, your app shows a small read notification and updates the sent status list.
+- No new Supabase schema is required beyond the v61 `heart_messages.opened_at` column.

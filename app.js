@@ -686,7 +686,7 @@ function renderHolidayCalendar(selection, filter, rows, todayIso) {
   const monthKeys = Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, '0')}`);
   const legend = `<div class="holiday-legend"><span class="legend-dot us-dot"></span> Ingleside/USA <span class="legend-dot au-dot"></span> Sydney/Australia-NSW <span class="legend-dot both-dot"></span> Both same date</div>`;
   const months = monthKeys.map(monthKey => buildHolidayMonth(monthKey, byDate, filter)).join('');
-  target.innerHTML = `${legend}<div class="holiday-calendar-grid">${months}</div>`;
+  target.innerHTML = `${legend}<div id="holidayInlineDetail" class="holiday-inline-detail" hidden></div><div class="holiday-calendar-grid">${months}</div>`;
 }
 function buildHolidayMonth(monthKey, byDate, filter) {
   const [year, month] = monthKey.split('-').map(Number);
@@ -704,7 +704,9 @@ function buildHolidayMonth(monthKey, byDate, filter) {
     const cls = hasUs && hasAu ? 'has-both' : hasUs ? 'has-us' : hasAu ? 'has-au' : '';
     const title = rows.map(h => `${CONFIG.places[h.placeId].shortLabel}: ${h.name}`).join(' | ');
     const markers = rows.length ? `<span class="holiday-markers">${hasUs ? '<i class="marker us-dot"></i>' : ''}${hasAu ? '<i class="marker au-dot"></i>' : ''}</span>` : '';
-    return `<div class="calendar-cell ${cls}" title="${escapeHtml(title)}"><span class="day-number">${day}</span>${markers}</div>`;
+    const holidayDetail = rows.map(h => `${CONFIG.places[h.placeId].shortLabel}: ${h.name}`).join('||');
+    const attrs = rows.length ? ` data-holiday-date="${iso}" data-holiday-detail="${escapeHtml(holidayDetail)}" tabindex="0" role="button"` : '';
+    return `<div class="calendar-cell ${cls}" title="${escapeHtml(title)}"${attrs}><span class="day-number">${day}</span>${markers}</div>`;
   }).join('');
   const labels = ['S','M','T','W','T','F','S'].map(d => `<span>${d}</span>`).join('');
   return `<article class="holiday-month"><h3>${monthName}</h3><div class="weekday-row">${labels}</div><div class="month-grid">${blanks}${dayCells}</div></article>`;
@@ -830,7 +832,9 @@ function buildTripMiniMonth(monthKey, range, holidayMap) {
     const hasAu = rows.some(h => h.placeId === 'au');
     const cls = [inRange ? 'in-trip' : '', hasUs && hasAu ? 'has-both' : hasUs ? 'has-us' : hasAu ? 'has-au' : '', iso === range.start ? 'trip-start' : '', iso === range.end ? 'trip-end' : ''].filter(Boolean).join(' ');
     const title = rows.map(h => `${CONFIG.places[h.placeId].shortLabel}: ${h.name}`).join(' | ');
-    return `<div class="trip-day ${cls}" title="${escapeHtml(title)}"><span>${day}</span></div>`;
+    const holidayDetail = rows.map(h => `${CONFIG.places[h.placeId].shortLabel}: ${h.name}`).join('||');
+    const attrs = rows.length ? ` data-holiday-date="${iso}" data-holiday-detail="${escapeHtml(holidayDetail)}" tabindex="0" role="button"` : '';
+    return `<div class="trip-day ${cls}" title="${escapeHtml(title)}"${attrs}><span>${day}</span></div>`;
   }).join('');
   const labels = ['S','M','T','W','T','F','S'].map(d => `<span>${d}</span>`).join('');
   return `<div class="trip-mini-month"><h4>${monthName}</h4><div class="trip-weekdays">${labels}</div><div class="trip-month-grid">${blanks}${dayCells}</div></div>`;
@@ -842,7 +846,7 @@ function buildTripSuggestionCard(r, index, holidayMap) {
   const holidayChips = holidayRows.map(h => `<span class="trip-holiday-chip ${h.placeId}">${CONFIG.places[h.placeId].shortLabel}: ${shortDisplayIsoDate(h.date)} · ${escapeHtml(h.name)}</span>`).join('');
   return `<details class="trip-card trip-disclosure disclosure-card">
     <summary class="trip-card-head"><div><strong>${index + 1}. ${shortDisplayIsoDate(r.start)} → ${shortDisplayIsoDate(r.end)}</strong><span>${daysText} · ${r.weekendDays} weekend days</span></div><span class="badge">Tap to view calendar</span></summary>
-    <div class="trip-calendars">${monthKeys.map(key => buildTripMiniMonth(key, r, holidayMap)).join('')}</div>
+    <div class="trip-inline-detail" hidden></div><div class="trip-calendars">${monthKeys.map(key => buildTripMiniMonth(key, r, holidayMap)).join('')}</div>
     <div class="trip-legend"><span><i class="range-dot"></i>Trip days</span><span><i class="legend-dot us-dot"></i>USA holiday</span><span><i class="legend-dot au-dot"></i>AUS/NSW holiday</span><span><i class="legend-dot both-dot"></i>Both</span></div>
     <div class="trip-holiday-chips">${holidayChips}</div>
   </details>`;
@@ -1027,6 +1031,7 @@ async function refreshAll() {
   try { renderAllStatic(); } catch (err) { console.warn('Static render failed:', err); }
   try { renderTripResults(); } catch (err) { console.warn('Trip render failed:', err); }
   try { await loadPosterPosts({ silent: true, preserveScroll: document.body.dataset.activeTab === 'poster' }); } catch (err) { console.warn('Poster refresh failed:', err); }
+  try { await loadFeelings({ silent: true }); await loadHeartMessages(); } catch (err) { console.warn('Feelings/heart refresh failed:', err); }
   if (button) {
     button.disabled = false;
     button.textContent = 'Refresh live data';
@@ -1220,7 +1225,7 @@ function updateTabIndicator(tabbar, activeButton, options = {}) {
 }
 
 function getCurrentTabOrder() {
-  const fallback = ['time', 'weather', 'poster', 'vacation', 'extras'];
+  const fallback = ['time', 'weather', 'poster', 'feelings', 'vacation', 'extras'];
   try {
     const stored = JSON.parse(localStorage.getItem('across.tabOrder'));
     if (Array.isArray(stored) && fallback.every(tab => stored.includes(tab))) return stored.filter(tab => fallback.includes(tab));
@@ -1257,7 +1262,7 @@ function initBottomTabs() {
   let tabs = getOrderedTabs();
   if (!tabs.length) return;
   const hashTab = location.hash ? location.hash.replace('#', '') : '';
-  const hashMap = { times: 'time', calls: 'time', extras: 'extras', differences: 'extras', weather: 'weather', poster: 'poster', holidays: 'vacation', planner: 'vacation' };
+  const hashMap = { times: 'time', calls: 'time', extras: 'extras', differences: 'extras', weather: 'weather', poster: 'poster', feelings: 'feelings', holidays: 'vacation', planner: 'vacation' };
 
   const activateButton = (button, options = {}) => {
     if (!button) return;
@@ -1266,6 +1271,10 @@ function initBottomTabs() {
     updateTabIndicator(tabbar, button, { dragging: Boolean(options.dragging) });
     if (targetTab === 'poster' && !options.dragging) {
       loadPosterPosts({ silent: true, preserveScroll: false }).catch(err => console.warn('Poster Board refresh failed:', err));
+    }
+    if (targetTab === 'feelings' && !options.dragging) {
+      loadFeelings({ silent: true }).catch(err => console.warn('Feelings refresh failed:', err));
+      loadHeartMessages().catch(err => console.warn('Heart messages refresh failed:', err));
     }
   };
 
@@ -1418,6 +1427,25 @@ function initBottomTabs() {
 }
 
 
+function initTabbarScrollMotion() {
+  let lastY = window.scrollY;
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY;
+      const diff = y - lastY;
+      if (Math.abs(diff) > 6) {
+        document.body.classList.toggle('nav-scroll-down', diff > 0 && y > 10);
+        document.body.classList.toggle('nav-scroll-up', diff < 0 || y <= 10);
+        lastY = y;
+      }
+      ticking = false;
+    });
+  }, { passive: true });
+}
+
 const POSTER_BUCKET = 'poster-media';
 const POSTER_AUTHOR_KEY = 'across.posterAuthor';
 const POSTER_LAST_SEEN_KEY = 'across.posterLastSeenActivity';
@@ -1435,6 +1463,21 @@ let drawingResizeCanvas = null;
 let drawingOriginalParent = null;
 let drawingOriginalNextSibling = null;
 let drawingScrollY = 0;
+let activeReplyDrawingForm = null;
+let replyDrawingContext = null;
+let replyDrawingHasInk = false;
+let replyDrawingPointerId = null;
+let replyDrawingResize = null;
+const AUTH_MODE_KEY = 'across.authMode';
+let authMode = 'guest';
+let authAuthorName = '';
+let authUserEmail = '';
+let feelingsRows = [];
+let feelingsChannel = null;
+let heartMessageRows = [];
+let heartSentRows = [];
+let heartReadToastTimer = null;
+let heartChannel = null;
 
 function posterConfig() {
   return window.ACROSS_SUPABASE_CONFIG || {};
@@ -1450,6 +1493,430 @@ function getPosterClient() {
     posterClient = window.supabase.createClient(cfg.url, cfg.anonKey);
   }
   return posterClient;
+}
+function allowedPosterUsers() {
+  const cfg = posterConfig();
+  return {
+    Taylor: String(cfg.allowedUsers?.taylorEmail || '').trim().toLowerCase(),
+    Ellana: String(cfg.allowedUsers?.ellanaEmail || '').trim().toLowerCase()
+  };
+}
+function authorFromEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  const users = allowedPosterUsers();
+  if (value && users.Taylor && value === users.Taylor) return 'Taylor';
+  if (value && users.Ellana && value === users.Ellana) return 'Ellana';
+  return '';
+}
+async function authorFromDatabase(email) {
+  const client = getPosterClient();
+  const value = String(email || '').trim().toLowerCase();
+  if (!client || !value) return '';
+  const { data, error } = await client
+    .from('poster_allowed_users')
+    .select('display_name')
+    .eq('email', value)
+    .maybeSingle();
+  if (error) {
+    console.warn('Could not check Poster Board allowlist:', error);
+    return '';
+  }
+  return data?.display_name === 'Taylor' || data?.display_name === 'Ellana' ? data.display_name : '';
+}
+async function tryClaimEllanaAccount(email) {
+  const client = getPosterClient();
+  const value = String(email || '').trim().toLowerCase();
+  if (!client?.rpc || !value) return '';
+  const users = allowedPosterUsers();
+  if (users.Taylor && value === users.Taylor) return 'Taylor';
+  const { data, error } = await client.rpc('claim_ellana_account');
+  if (error) {
+    console.warn('Ellana claim failed:', error);
+    return '';
+  }
+  return data === 'Ellana' || data === 'Taylor' ? data : '';
+}
+function isPosterAuthenticated() { return authMode === 'authenticated' && Boolean(authAuthorName); }
+function isVisitorMode() { return authMode === 'visitor'; }
+function canInteractWithPosterBoard() { return isPosterAuthenticated(); }
+function authGateStatus(message = '', isError = false) {
+  const el = $('#authGateStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('error', Boolean(isError));
+}
+function applyPrivacyClasses() {
+  document.body.classList.toggle('is-visitor', isVisitorMode());
+  document.body.classList.toggle('is-authenticated', isPosterAuthenticated());
+  const toggle = $('#togglePosterComposer');
+  if (toggle) {
+    toggle.hidden = !canInteractWithPosterBoard();
+    toggle.disabled = !canInteractWithPosterBoard();
+  }
+  if (!canInteractWithPosterBoard()) setPosterComposerOpen(false);
+  const gateBtn = $('#openAuthGate');
+  const signOutBtn = $('#signOutBtn');
+  const heading = $('#authStatusHeading');
+  const text = $('#authStatusText');
+  if (isPosterAuthenticated()) {
+    if (heading) heading.textContent = `Signed in as ${authAuthorName}`;
+    if (text) text.textContent = `${authUserEmail} can create private or public posts, replies, and reactions.`;
+    if (signOutBtn) signOutBtn.hidden = false;
+    if (gateBtn) gateBtn.textContent = 'Switch / visitor options';
+  } else if (isVisitorMode()) {
+    if (heading) heading.textContent = 'Visitor mode';
+    if (text) text.textContent = 'Private details are blurred, and Poster Board posting is disabled. Public posts stay visible.';
+    if (signOutBtn) signOutBtn.hidden = true;
+  } else {
+    if (heading) heading.textContent = 'Private app access';
+    if (text) text.textContent = 'Sign in with a one-time email code, or continue as a blurred visitor.';
+    if (signOutBtn) signOutBtn.hidden = true;
+  }
+  const changeButton = $('#changePosterAuthor');
+  if (changeButton) changeButton.hidden = isPosterAuthenticated();
+  setPosterAuthorUi();
+}
+function openAuthGate(open = true) {
+  const gate = $('#authGate');
+  if (!gate) return;
+  gate.hidden = !open;
+  if (open) $('#authEmailInput')?.focus();
+}
+function setVisitorMode() {
+  authMode = 'visitor';
+  authAuthorName = '';
+  authUserEmail = '';
+  try { localStorage.setItem(AUTH_MODE_KEY, 'visitor'); } catch (_) {}
+  applyPrivacyClasses();
+  openAuthGate(false);
+  loadPosterPosts({ silent: true }).catch(() => {});
+}
+async function applyAuthSession(session) {
+  if (!session?.user?.email) {
+    authMode = localStorage.getItem(AUTH_MODE_KEY) === 'visitor' ? 'visitor' : 'guest';
+    authAuthorName = '';
+    authUserEmail = '';
+    applyPrivacyClasses();
+    if (authMode !== 'visitor') openAuthGate(true);
+    return;
+  }
+  const email = String(session.user.email || '').trim().toLowerCase();
+  let author = authorFromEmail(email) || await authorFromDatabase(email);
+  if (!author) author = await tryClaimEllanaAccount(email);
+  if (!author) {
+    authMode = 'guest';
+    authAuthorName = '';
+    authUserEmail = email;
+    authGateStatus('That email is not approved for this app, or Ellana has already claimed her account with another email.', true);
+    applyPrivacyClasses();
+    openAuthGate(true);
+    return;
+  }
+  authMode = 'authenticated';
+  authAuthorName = author;
+  authUserEmail = email;
+  posterCurrentAuthor = author;
+  savePosterAuthor(author);
+  try { localStorage.setItem(AUTH_MODE_KEY, 'authenticated'); } catch (_) {}
+  applyPrivacyClasses();
+  openAuthGate(false);
+  authGateStatus('');
+  loadPosterPosts({ silent: true }).catch(() => {});
+  loadFeelings({ silent: true }).catch(() => {});
+  loadHeartMessages().catch(() => {});
+  subscribeFeelingsAndHeart();
+}
+async function sendOtpLogin() {
+  const client = getPosterClient();
+  const email = String($('#authEmailInput')?.value || '').trim().toLowerCase();
+  if (!client?.auth) return authGateStatus('Supabase is not configured yet.', true);
+  if (!email) return authGateStatus('Enter your email first.', true);
+  const configuredUsers = allowedPosterUsers();
+  const ellanaAlreadyKnown = await authorFromDatabase(email);
+  const ellanaOpen = !configuredUsers.Ellana;
+  if (!authorFromEmail(email) && !ellanaAlreadyKnown && !ellanaOpen) {
+    return authGateStatus('That email is not the Taylor or Ellana email configured for this app.', true);
+  }
+  authGateStatus('Sending login link…');
+  const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href.split('#')[0] } });
+  if (error) return authGateStatus(error.message || 'Could not send the login email.', true);
+  authGateStatus('Check your email for the one-time login link/code, then come back here.');
+}
+async function signOutPosterAuth() {
+  const client = getPosterClient();
+  if (!client?.auth) return;
+  await client.auth.signOut().catch(() => {});
+  authMode = 'guest';
+  authAuthorName = '';
+  authUserEmail = '';
+  applyPrivacyClasses();
+  openAuthGate(true);
+}
+function initSplashScreen() {
+  const splash = $('#splashScreen');
+  if (!splash) return;
+  splash.hidden = false;
+  window.setTimeout(() => {
+    splash.classList.add('is-hidden');
+    if (!isPosterAuthenticated() && !isVisitorMode()) openAuthGate(true);
+    window.setTimeout(() => { splash.hidden = true; }, 480);
+  }, 1050);
+}
+async function initPosterAuth() {
+  applyPrivacyClasses();
+  $('#openAuthGate')?.addEventListener('click', () => openAuthGate(true));
+  $('#continueVisitorBtn')?.addEventListener('click', () => setVisitorMode());
+  $('#sendOtpBtn')?.addEventListener('click', () => sendOtpLogin());
+  $('#signOutBtn')?.addEventListener('click', () => signOutPosterAuth());
+  const client = getPosterClient();
+  if (!client?.auth) return;
+  client.auth.onAuthStateChange((_event, session) => { applyAuthSession(session).catch(err => console.warn(err)); });
+  const { data } = await client.auth.getSession();
+  if (data?.session) await applyAuthSession(data.session);
+  else if (localStorage.getItem(AUTH_MODE_KEY) === 'visitor') setVisitorMode();
+  else applyPrivacyClasses();
+}
+
+function currentAppAuthor() {
+  return posterAuthor();
+}
+function feelingStatus(message = '', isError = false) {
+  const el = $('#feelingsStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('error', Boolean(isError));
+}
+function heartStatus(message = '', isError = false) {
+  const el = $('#heartNoteStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('error', Boolean(isError));
+}
+
+function heartReceiptKey() {
+  return `across.heartReadReceipts.${currentAppAuthor()}`;
+}
+function loadSeenHeartReceiptIds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(heartReceiptKey()) || '[]');
+    return new Set(Array.isArray(saved) ? saved : []);
+  } catch (_) {
+    return new Set();
+  }
+}
+function saveSeenHeartReceiptIds(ids) {
+  try { localStorage.setItem(heartReceiptKey(), JSON.stringify(Array.from(ids).slice(-80))); } catch (_) {}
+}
+function showHeartReadToast(message) {
+  let toast = $('#heartReadToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'heartReadToast';
+    toast.className = 'heart-read-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(heartReadToastTimer);
+  heartReadToastTimer = window.setTimeout(() => { toast.hidden = true; }, 5200);
+}
+function renderHeartSentStatus() {
+  const wrap = $('#heartSentStatus');
+  if (!wrap) return;
+  if (!canInteractWithPosterBoard()) {
+    wrap.innerHTML = '<p class="muted">Sign in to see envelope read receipts.</p>';
+    return;
+  }
+  if (!heartSentRows.length) {
+    wrap.innerHTML = '<p class="muted">Sent envelope read receipts will show here.</p>';
+    return;
+  }
+  wrap.innerHTML = heartSentRows.slice(0, 5).map(row => {
+    const sent = row.created_at ? new Date(row.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const opened = row.opened_at ? new Date(row.opened_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const body = row.body ? row.body.slice(0, 56) + (row.body.length > 56 ? '…' : '') : 'Heart envelope';
+    const pill = row.opened_at ? `<em class="heart-read-pill">Read ${escapeHtml(opened)}</em>` : '<em class="heart-unread-pill">Not opened yet</em>';
+    return `<div class="heart-receipt-entry"><div><strong>To ${escapeHtml(row.recipient || 'your person')}: ${escapeHtml(body)}</strong><span>Sent ${escapeHtml(sent)}</span></div>${pill}</div>`;
+  }).join('');
+}
+function checkNewHeartReceipts(rows = heartSentRows) {
+  if (!canInteractWithPosterBoard()) return;
+  const storageKey = heartReceiptKey();
+  const firstReceiptCheck = localStorage.getItem(storageKey) === null;
+  const seen = loadSeenHeartReceiptIds();
+  const readable = rows.filter(row => row.opened_at && row.id);
+  if (firstReceiptCheck) {
+    readable.forEach(row => seen.add(row.id));
+    saveSeenHeartReceiptIds(seen);
+    return;
+  }
+  const newlyRead = readable.filter(row => !seen.has(row.id));
+  if (!newlyRead.length) return;
+  newlyRead.forEach(row => seen.add(row.id));
+  saveSeenHeartReceiptIds(seen);
+  const latest = newlyRead.sort((a, b) => new Date(b.opened_at || 0) - new Date(a.opened_at || 0))[0];
+  showHeartReadToast(`${latest.recipient || 'They'} opened your heart envelope 💌`);
+}
+async function loadHeartSentReceipts(options = {}) {
+  const client = getPosterClient();
+  if (!client || !canInteractWithPosterBoard()) {
+    heartSentRows = [];
+    renderHeartSentStatus();
+    return;
+  }
+  const { data, error } = await client
+    .from('heart_messages')
+    .select('*')
+    .eq('sender', currentAppAuthor())
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) {
+    console.warn('Heart sent receipts failed:', error);
+    return;
+  }
+  heartSentRows = data || [];
+  renderHeartSentStatus();
+  if (options.notify !== false) checkNewHeartReceipts(heartSentRows);
+}
+function feelingCardHtml(row) {
+  const when = row.created_at ? new Date(row.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const note = row.note ? `<p>${escapeHtml(row.note)}</p>` : '';
+  return `<div class="feeling-entry"><strong>${escapeHtml(row.feeling || 'Feeling')}</strong><time>${escapeHtml(when)}</time>${note}</div>`;
+}
+function renderFeelings() {
+  const taylor = $('#feelingsTaylor');
+  const ellana = $('#feelingsEllana');
+  if (!taylor || !ellana) return;
+  const renderColumn = author => {
+    const rows = feelingsRows.filter(row => row.author === author);
+    return rows.length ? rows.map(feelingCardHtml).join('') : '<p class="muted">No feelings yet.</p>';
+  };
+  taylor.innerHTML = renderColumn('Taylor');
+  ellana.innerHTML = renderColumn('Ellana');
+  const title = $('#feelingsComposerTitle');
+  if (title) title.textContent = canInteractWithPosterBoard() ? `Add ${currentAppAuthor()}’s feeling` : 'Sign in to add feelings';
+}
+async function loadFeelings(options = {}) {
+  const client = getPosterClient();
+  if (!client) return;
+  if (!canInteractWithPosterBoard()) {
+    feelingsRows = [];
+    renderFeelings();
+    if (!isVisitorMode()) feelingStatus('Sign in as Taylor or Ellana to see feelings.');
+    return;
+  }
+  if (!options.silent) feelingStatus('Loading feelings…');
+  const { data, error } = await client.from('feelings').select('*').order('created_at', { ascending: false }).limit(100);
+  if (error) {
+    feelingStatus(error.message || 'Could not load feelings. Run the updated supabase-setup.sql.', true);
+    return;
+  }
+  feelingsRows = data || [];
+  renderFeelings();
+  if (!options.silent) feelingStatus('');
+}
+async function saveFeelingEntry() {
+  const client = getPosterClient();
+  if (!client || !canInteractWithPosterBoard()) return feelingStatus('Sign in as Taylor or Ellana first.', true);
+  const feeling = $('#feelingSelect')?.value?.trim();
+  const note = $('#feelingNote')?.value?.trim();
+  if (!feeling) return feelingStatus('Choose a feeling first.', true);
+  feelingStatus('Saving feeling…');
+  const payload = { author: currentAppAuthor(), author_email: authUserEmail || null, feeling, note: note || null };
+  const { error } = await client.from('feelings').insert(payload);
+  if (error) return feelingStatus(error.message || 'Could not save feeling. Run the updated supabase-setup.sql.', true);
+  $('#feelingSelect').value = '';
+  $('#feelingNote').value = '';
+  feelingStatus('Feeling added.');
+  await loadFeelings({ silent: true });
+}
+function renderHeartEnvelope() {
+  const button = $('#heartEnvelope');
+  const count = $('#heartEnvelopeCount');
+  if (!button) return;
+  const active = canInteractWithPosterBoard() && heartMessageRows.length > 0;
+  button.hidden = !active;
+  if (count) count.textContent = String(Math.min(heartMessageRows.length, 9));
+}
+async function loadHeartMessages() {
+  const client = getPosterClient();
+  if (!client || !canInteractWithPosterBoard()) {
+    heartMessageRows = [];
+    heartSentRows = [];
+    renderHeartEnvelope();
+    renderHeartSentStatus();
+    return;
+  }
+  const { data, error } = await client
+    .from('heart_messages')
+    .select('*')
+    .eq('recipient', currentAppAuthor())
+    .is('opened_at', null)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) {
+    console.warn('Heart messages failed:', error);
+    return;
+  }
+  heartMessageRows = data || [];
+  renderHeartEnvelope();
+  loadHeartSentReceipts().catch(() => {});
+}
+async function sendHeartNote() {
+  const client = getPosterClient();
+  if (!client || !canInteractWithPosterBoard()) return heartStatus('Sign in as Taylor or Ellana first.', true);
+  const body = $('#heartNoteInput')?.value?.trim();
+  if (!body) return heartStatus('Write a tiny message first.', true);
+  const sender = currentAppAuthor();
+  const recipient = sender === 'Taylor' ? 'Ellana' : 'Taylor';
+  heartStatus(`Sending to ${recipient}…`);
+  const { error } = await client.from('heart_messages').insert({ sender, sender_email: authUserEmail || null, recipient, body });
+  if (error) return heartStatus(error.message || 'Could not send envelope. Run the updated supabase-setup.sql.', true);
+  $('#heartNoteInput').value = '';
+  heartStatus(`Heart envelope sent to ${recipient}.`);
+  await loadHeartSentReceipts({ notify: false });
+}
+
+function openHeartReveal() {
+  const row = heartMessageRows[0];
+  if (!row) return;
+  const wrap = $('#heartMessageReveal');
+  if (!wrap) return;
+  $('#heartMessageFrom') && ($('#heartMessageFrom').textContent = `From ${row.sender || 'your person'}`);
+  $('#heartMessageBody') && ($('#heartMessageBody').textContent = row.body || '💖');
+  wrap.dataset.messageId = row.id;
+  wrap.hidden = false;
+}
+async function closeHeartReveal(markRead = true) {
+  const wrap = $('#heartMessageReveal');
+  const id = wrap?.dataset?.messageId;
+  if (wrap) wrap.hidden = true;
+  if (markRead && id && canInteractWithPosterBoard()) {
+    const client = getPosterClient();
+    await client.from('heart_messages').update({ opened_at: new Date().toISOString() }).eq('id', id).catch?.(() => {});
+    heartMessageRows = heartMessageRows.filter(row => row.id !== id);
+    renderHeartEnvelope();
+    loadHeartMessages().catch(() => {});
+  }
+}
+function subscribeFeelingsAndHeart() {
+  const client = getPosterClient();
+  if (!client || feelingsChannel || heartChannel) return;
+  feelingsChannel = client.channel('feelings-v62')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'feelings' }, () => loadFeelings({ silent: true }))
+    .subscribe();
+  heartChannel = client.channel('heart-messages-v62')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'heart_messages' }, () => { loadHeartMessages(); loadHeartSentReceipts(); })
+    .subscribe();
+}
+function initFeelingsAndHeart() {
+  $('#saveFeelingBtn')?.addEventListener('click', () => saveFeelingEntry());
+  $('#sendHeartNoteBtn')?.addEventListener('click', () => sendHeartNote());
+  renderHeartSentStatus();
+  $('#heartEnvelope')?.addEventListener('click', () => openHeartReveal());
+  $('#heartMessageDone')?.addEventListener('click', () => closeHeartReveal(true));
+  $('#closeHeartReveal')?.addEventListener('click', () => closeHeartReveal(false));
+  $('#heartMessageReveal')?.addEventListener('click', event => { if (event.target.id === 'heartMessageReveal') closeHeartReveal(false); });
 }
 function setPosterStatus(message, isError = false) {
   const el = $('#posterStatus');
@@ -1606,7 +2073,8 @@ function reactionControlsHtml(post) {
     const authors = groups[emoji] || [];
     const active = hasReaction(post, emoji);
     const title = authors.length ? `${emoji} ${authors.join(', ')}` : `${emoji} react`;
-    return `<button type="button" class="poster-react-button ${active ? 'active' : ''}" data-react-poster-id="${escapeHtml(post.id)}" data-react-emoji="${escapeHtml(emoji)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span>${emoji}</span>${authors.length ? `<em>${authors.length}</em>` : ''}</button>`;
+    const disabled = !canInteractWithPosterBoard() ? ' disabled' : '';
+    return `<button type="button" class="poster-react-button ${active ? 'active' : ''}" data-react-poster-id="${escapeHtml(post.id)}" data-react-emoji="${escapeHtml(emoji)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"${disabled}><span>${emoji}</span>${authors.length ? `<em>${authors.length}</em>` : ''}</button>`;
   }).join('');
   const summaries = Object.entries(groups).filter(([, authors]) => authors.length).map(([emoji, authors]) => `<span class="poster-reaction-summary"><strong>${escapeHtml(emoji)}</strong> ${escapeHtml(authors.join(', '))}</span>`).join('');
   return `<div class="poster-reactions"><div class="poster-reaction-buttons">${buttons}</div>${summaries ? `<div class="poster-reaction-summary-row">${summaries}</div>` : ''}</div>`;
@@ -1618,36 +2086,42 @@ function replyMediaHtml(reply) {
   return `<img class="poster-reply-media" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
 }
 function repliesHtml(post) {
-  const replies = post.poster_replies || [];
+  const replies = isVisitorMode() ? (post.poster_replies || []).filter(reply => reply.is_public) : (post.poster_replies || []);
   const list = replies.length
     ? `<div class="poster-replies-list">${replies.map(reply => {
         const body = reply.body ? `<p>${escapeHtml(reply.body)}</p>` : '';
         const media = replyMediaHtml(reply);
-        const deleteButton = reply.id ? `<button type="button" class="poster-reply-delete" data-delete-reply-id="${escapeHtml(reply.id)}" data-delete-reply-image-path="${escapeHtml(reply.image_path || '')}">Delete</button>` : '';
-        return `<div class="poster-reply"><div class="poster-reply-head"><strong>${escapeHtml(reply.author || 'Someone')}</strong><span>${escapeHtml(reply.created_at ? new Date(reply.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')}</span>${deleteButton}</div>${media}${body}</div>`;
+        const visibility = reply.is_public ? '<span class="poster-public-badge">Public reply</span>' : '<span class="poster-private-badge">Private reply</span>';
+        const deleteButton = (!isVisitorMode() && reply.id) ? `<button type="button" class="poster-reply-delete" data-delete-reply-id="${escapeHtml(reply.id)}" data-delete-reply-image-path="${escapeHtml(reply.image_path || '')}">Delete</button>` : '';
+        return `<div class="poster-reply"><div class="poster-reply-head"><strong>${escapeHtml(reply.author || 'Someone')}</strong><span>${escapeHtml(reply.created_at ? new Date(reply.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')}</span>${visibility}${deleteButton}</div>${media}${body}</div>`;
       }).join('')}</div>`
     : '';
-  return `<div class="poster-replies">${list}<button type="button" class="poster-reply-toggle" data-reply-toggle="${escapeHtml(post.id)}">Reply</button><form class="poster-reply-form" data-reply-form="${escapeHtml(post.id)}" hidden><textarea rows="2" placeholder="Write a reply…"></textarea><label class="poster-reply-file">Photo / GIF<input type="file" accept="image/*,.gif,image/gif" data-reply-file /></label><div><button type="button" class="secondary" data-reply-cancel="${escapeHtml(post.id)}">Cancel</button><button type="button" class="secondary" data-reply-drawing="${escapeHtml(post.id)}">Use current drawing</button><button type="submit">Post reply</button></div></form></div>`;
+  if (!canInteractWithPosterBoard()) return `<div class="poster-replies">${list}<div class="poster-login-needed">Sign in to reply or react.</div></div>`;
+  return `<div class="poster-replies">${list}<button type="button" class="poster-reply-toggle" data-reply-toggle="${escapeHtml(post.id)}">Reply</button><form class="poster-reply-form" data-reply-form="${escapeHtml(post.id)}" hidden><textarea rows="2" placeholder="Write a reply…"></textarea><label class="poster-reply-file">Photo / GIF<input type="file" accept="image/*,.gif,image/gif" data-reply-file /></label><label class="poster-public-check poster-reply-visibility"><input type="checkbox" data-reply-public /> <span>Make reply public</span></label><div><button type="button" class="secondary" data-reply-cancel="${escapeHtml(post.id)}">Cancel</button><button type="button" class="secondary" data-reply-drawing="${escapeHtml(post.id)}">Draw reply</button><button type="submit">Post reply</button></div></form></div>`;
 }
 function posterPostHtml(post, options = {}) {
   const safeAuthor = escapeHtml(post.author || 'Someone');
   const date = post.created_at ? new Date(post.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
   const imagePath = post.image_path || '';
-  const deleteButton = post.id ? `<button type="button" class="poster-delete-button" data-delete-poster-id="${escapeHtml(post.id)}" data-delete-image-path="${escapeHtml(imagePath)}" aria-label="Delete this post">Delete</button>` : '';
+  const deleteButton = (!isVisitorMode() && post.id) ? `<button type="button" class="poster-delete-button" data-delete-poster-id="${escapeHtml(post.id)}" data-delete-image-path="${escapeHtml(imagePath)}" aria-label="Delete this post">Delete</button>` : '';
   const lastActivity = post.last_activity_at && post.last_activity_at !== post.created_at
     ? `<span class="poster-activity-note">Last activity ${escapeHtml(new Date(post.last_activity_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}</span>`
     : '';
   const newMarker = options.unread ? '<button type="button" class="poster-new-pill" data-mark-seen-post="1">New</button>' : '<span class="poster-new-pill poster-new-placeholder" aria-hidden="true">New</span>';
-  const meta = `<div class="poster-post-meta"><div><strong>${safeAuthor}</strong><span>${escapeHtml(date)}</span>${lastActivity}</div><div class="poster-post-actions">${newMarker}${deleteButton}</div></div>`;
+  const visibilityBadge = post.is_public ? '<span class="poster-public-badge">Public</span>' : '<span class="poster-private-badge">Private</span>';
+  const meta = `<div class="poster-post-meta"><div><strong>${safeAuthor}</strong><span>${escapeHtml(date)}</span>${visibilityBadge}${lastActivity}</div><div class="poster-post-actions">${newMarker}${deleteButton}</div></div>`;
   const latestClass = options.latest ? ' latest-post' : '';
   const unreadClass = options.unread ? ' poster-unread' : '';
+  if (isVisitorMode() && !post.is_public) {
+    return `<article class="poster-post card poster-private-placeholder${latestClass}${unreadClass}" data-poster-post-id="${escapeHtml(post.id)}">${meta}<div class="poster-private-body"><div><strong>Private post</strong><p class="muted">This post is only visible to Taylor and Ellana after signing in.</p><span class="poster-private-lock">Private between you two</span></div></div></article>`;
+  }
   const note = post.body ? `<p class="poster-media-note">${escapeHtml(post.body)}</p>` : '';
   const social = `${reactionControlsHtml(post)}${repliesHtml(post)}`;
   if (post.kind === 'message') {
     return `<article class="poster-post card message-post${latestClass}${unreadClass}" data-poster-post-id="${escapeHtml(post.id)}">${meta}<p>${escapeHtml(post.body || '')}</p>${social}</article>`;
   }
   const url = posterImageUrl(post.image_path);
-  return `<article class="poster-post card media-post${latestClass}${unreadClass}" data-poster-post-id="${escapeHtml(post.id)}">${meta}<img src="${escapeHtml(url)}" alt="${escapeHtml(post.kind)} from ${safeAuthor}" loading="lazy" />${note}${social}</article>`;
+  return `<article class="poster-post card media-post${latestClass}${unreadClass}" data-poster-post-id="${escapeHtml(post.id)}"><div class="poster-post-shell">${meta}<img src="${escapeHtml(url)}" alt="${escapeHtml(post.kind)} from ${safeAuthor}" loading="lazy" />${note}${social}</div></article>`;
 }
 function renderPosterFeed(posts = posterPosts, options = {}) {
   const feed = $('#posterFeed');
@@ -1705,23 +2179,29 @@ function savePosterAuthor(value) {
   if (value === 'Taylor' || value === 'Ellana') localStorage.setItem(POSTER_AUTHOR_KEY, value);
 }
 function setPosterAuthorUi(value = posterCurrentAuthor || loadPosterAuthor()) {
-  const author = value === 'Taylor' ? 'Taylor' : 'Ellana';
+  const author = (isPosterAuthenticated() ? authAuthorName : value) === 'Taylor' ? 'Taylor' : 'Ellana';
   posterCurrentAuthor = author;
-  savePosterAuthor(author);
-  const label = $('#posterCurrentAuthor');
-  if (label) label.textContent = author;
-  const row = document.querySelector('.poster-user-row');
-  if (row) row.dataset.currentAuthor = author;
+  const current = $('#posterCurrentAuthor');
+  if (current) current.textContent = author;
+  const label = current?.previousElementSibling;
+  if (label) label.textContent = isPosterAuthenticated() ? 'Signed in as' : 'Posting as';
   document.querySelectorAll('[data-poster-author-choice]').forEach(button => {
     button.classList.toggle('active', button.dataset.posterAuthorChoice === author);
     button.setAttribute('aria-pressed', String(button.dataset.posterAuthorChoice === author));
   });
+  const changeButton = $('#changePosterAuthor');
+  if (changeButton) changeButton.hidden = isPosterAuthenticated();
 }
 function initPosterAuthorPicker() {
   posterCurrentAuthor = loadPosterAuthor();
   setPosterAuthorUi(posterCurrentAuthor);
 }
 function posterAuthor() {
+  if (isPosterAuthenticated() && (authAuthorName === 'Taylor' || authAuthorName === 'Ellana')) {
+    posterCurrentAuthor = authAuthorName;
+    setPosterAuthorUi(posterCurrentAuthor);
+    return posterCurrentAuthor;
+  }
   if (posterCurrentAuthor !== 'Taylor' && posterCurrentAuthor !== 'Ellana') posterCurrentAuthor = loadPosterAuthor();
   setPosterAuthorUi(posterCurrentAuthor);
   return posterCurrentAuthor || 'Ellana';
@@ -1777,7 +2257,9 @@ async function createPosterPost(post) {
     showPosterSetupNotice();
     return;
   }
-  const { error } = await client.from('poster_posts').insert(post);
+  if (!canInteractWithPosterBoard()) throw new Error('Sign in as Taylor or Ellana to post.');
+  const payload = { ...post, author: posterAuthor(), author_email: authUserEmail || null, is_public: Boolean(post.is_public) };
+  const { error } = await client.from('poster_posts').insert(payload);
   if (error) throw error;
 }
 async function postPosterMessage() {
@@ -1789,7 +2271,7 @@ async function postPosterMessage() {
   }
   try {
     setPosterStatus('Posting message…');
-    await createPosterPost({ author: posterAuthor(), kind: 'message', body });
+    await createPosterPost({ author: posterAuthor(), kind: 'message', body, is_public: $('#posterMakePublic')?.checked });
     input.value = '';
     setPosterStatus('Posted!');
     await loadPosterPosts({ markSeen: true, preserveScroll: true });
@@ -1830,7 +2312,7 @@ async function postPosterPhoto() {
     const blob = await resizeImageFile(file);
     const image_path = await uploadPosterBlob(blob, 'photo', file.name);
     const body = photoNote();
-    await createPosterPost({ author: posterAuthor(), kind: 'photo', image_path, body: body || null });
+    await createPosterPost({ author: posterAuthor(), kind: 'photo', image_path, body: body || null, is_public: $('#posterMakePublic')?.checked });
     input.value = '';
     $('#posterPhotoNote') && ($('#posterPhotoNote').value = '');
     togglePosterNote('photoNoteWrap', null, false);
@@ -1964,7 +2446,7 @@ async function postPosterDrawing() {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     const image_path = await uploadPosterBlob(blob, 'drawing', 'drawing.png');
     const body = drawingNote();
-    await createPosterPost({ author: posterAuthor(), kind: 'drawing', image_path, body: body || null });
+    await createPosterPost({ author: posterAuthor(), kind: 'drawing', image_path, body: body || null, is_public: $('#posterMakePublic')?.checked });
     $('#clearDrawingBtn')?.click();
     clearMediaNotes();
     togglePosterNote('drawingNoteWrap', null, false);
@@ -1980,7 +2462,7 @@ async function postPosterDrawing() {
 
 async function togglePosterReaction(postId, emoji) {
   const client = getPosterClient();
-  if (!client || !postId || !emoji) return;
+  if (!client || !postId || !emoji || !canInteractWithPosterBoard()) return;
   const author = posterAuthor();
   const post = posterPosts.find(item => item.id === postId);
   const existing = (post?.poster_reactions || []).find(reaction => reaction.emoji === emoji && reaction.author === author);
@@ -1989,13 +2471,23 @@ async function togglePosterReaction(postId, emoji) {
       setPosterStatus('Removing reaction…');
       const { error } = await client.from('poster_reactions').delete().eq('id', existing.id);
       if (error) throw error;
+      if (post) post.poster_reactions = (post.poster_reactions || []).filter(reaction => reaction.id !== existing.id);
     } else {
       setPosterStatus('Adding reaction…');
-      const { error } = await client.from('poster_reactions').insert({ post_id: postId, author, emoji });
+      const { data, error } = await client.from('poster_reactions').insert({ post_id: postId, author, emoji }).select('*').single();
       if (error) throw error;
+      if (post) {
+        if (!Array.isArray(post.poster_reactions)) post.poster_reactions = [];
+        post.poster_reactions.push(data || { post_id: postId, author, emoji, created_at: new Date().toISOString(), id: String(Date.now()) });
+      }
     }
-    await refreshPosterInPlace({ markSeen: true, preserveScroll: true });
+    if (post) {
+      post.last_activity_at = new Date().toISOString();
+      const reactionWrap = document.querySelector(`[data-poster-post-id="${safeCss(postId)}"] .poster-reactions`);
+      if (reactionWrap) reactionWrap.outerHTML = reactionControlsHtml(post);
+    }
     setPosterStatus('');
+    refreshPosterBadgeOnly();
   } catch (error) {
     setPosterStatus(error.message || 'Reaction failed. Run the updated supabase-setup.sql and try again.', true);
   }
@@ -2015,13 +2507,7 @@ function fileIsGif(file) {
   return Boolean(file && (file.type === 'image/gif' || /\.gif$/i.test(file.name || '')));
 }
 async function uploadReplyMedia(form, useCurrentDrawing = false) {
-  if (useCurrentDrawing) {
-    const canvas = $('#drawingCanvas');
-    if (!canvas || !drawingHasInk) throw new Error('Draw something in the drawing pad first, then use it as a reply.');
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    const image_path = await uploadPosterBlob(blob, 'drawing', 'reply-drawing.png');
-    return { kind: 'drawing', image_path };
-  }
+  if (useCurrentDrawing) throw new Error('Use Draw reply to make a fresh reply drawing.');
   const file = form.querySelector('[data-reply-file]')?.files?.[0];
   if (!file) return { kind: 'message', image_path: null };
   const isGif = fileIsGif(file);
@@ -2030,6 +2516,67 @@ async function uploadReplyMedia(form, useCurrentDrawing = false) {
   const image_path = await uploadPosterBlob(blob, kind, file.name);
   return { kind, image_path };
 }
+
+function setupGenericDrawingCanvas(canvas, state) {
+  if (!canvas) return;
+  const resize = (options = {}) => {
+    const preserve = options.preserve !== false && state.hasInk && canvas.width && canvas.height;
+    const oldCanvas = preserve ? document.createElement('canvas') : null;
+    if (oldCanvas) { oldCanvas.width = canvas.width; oldCanvas.height = canvas.height; oldCanvas.getContext('2d').drawImage(canvas, 0, 0); }
+    const rect = canvas.getBoundingClientRect();
+    const cssWidth = Math.max(280, Math.round(rect.width || canvas.clientWidth || 600));
+    const cssHeight = Math.max(320, Math.round(rect.height || canvas.clientHeight || 520));
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.round(cssWidth * dpr); canvas.height = Math.round(cssHeight * dpr);
+    state.ctx = canvas.getContext('2d'); state.ctx.setTransform(1,0,0,1,0,0); state.ctx.fillStyle = '#fffafc'; state.ctx.fillRect(0,0,canvas.width,canvas.height);
+    if (oldCanvas) state.ctx.drawImage(oldCanvas,0,0,canvas.width,canvas.height);
+    state.ctx.lineCap = 'round'; state.ctx.lineJoin = 'round'; state.ctx.lineWidth = Math.max(5, 7*dpr); state.ctx.strokeStyle = '#ec4899';
+    if (!oldCanvas) state.hasInk = false;
+  };
+  state.resize = resize; resize({ preserve:false });
+  const point = event => { const rect = canvas.getBoundingClientRect(); return { x:(event.clientX-rect.left)*(canvas.width/Math.max(1,rect.width)), y:(event.clientY-rect.top)*(canvas.height/Math.max(1,rect.height)) }; };
+  canvas.onpointerdown = event => { event.preventDefault(); state.pointerId = event.pointerId; canvas.setPointerCapture?.(event.pointerId); const p=point(event); state.ctx.beginPath(); state.ctx.moveTo(p.x,p.y); state.ctx.lineTo(p.x+.01,p.y+.01); state.ctx.stroke(); state.hasInk = true; };
+  canvas.onpointermove = event => { if (state.pointerId !== event.pointerId) return; event.preventDefault(); const p=point(event); state.ctx.lineTo(p.x,p.y); state.ctx.stroke(); state.hasInk = true; };
+  const stop = event => { if (state.pointerId === event?.pointerId || event?.pointerId === undefined) state.pointerId = null; };
+  canvas.onpointerup = stop; canvas.onpointercancel = stop; canvas.onlostpointercapture = stop;
+}
+function setReplyDrawingOverlay(open, form = null) {
+  const overlay = $('#replyDrawingOverlay'); const canvas = $('#replyDrawingCanvas'); if (!overlay || !canvas) return;
+  if (open) {
+    activeReplyDrawingForm = form; overlay.hidden = false; document.documentElement.classList.add('drawing-fullscreen'); document.body.classList.add('drawing-fullscreen');
+    const state = { ctx:null, _hasInk:false, pointerId:null, resize:null };
+    Object.defineProperty(state, 'hasInk', { get(){ return replyDrawingHasInk; }, set(v){ replyDrawingHasInk = Boolean(v); } });
+    replyDrawingHasInk = false; setupGenericDrawingCanvas(canvas, state); replyDrawingContext = state; replyDrawingResize = state.resize;
+    window.setTimeout(() => replyDrawingResize?.({ preserve:true }), 80);
+  } else {
+    overlay.hidden = true; document.documentElement.classList.remove('drawing-fullscreen'); document.body.classList.remove('drawing-fullscreen'); activeReplyDrawingForm = null;
+    $('#replyDrawingText') && ($('#replyDrawingText').value = ''); $('#replyDrawingPublic') && ($('#replyDrawingPublic').checked = false);
+  }
+}
+async function submitReplyDrawing() {
+  const canvas = $('#replyDrawingCanvas'); const form = activeReplyDrawingForm; const client = getPosterClient(); if (!client || !form || !canvas) return;
+  if (!replyDrawingHasInk) { setPosterStatus('Draw something first.', true); return; }
+  const postId = form.dataset.replyForm;
+  try {
+    setPosterStatus('Uploading drawing reply…');
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const image_path = await uploadPosterBlob(blob, 'drawing', 'reply-drawing.png');
+    const body = $('#replyDrawingText')?.value.trim() || form.querySelector('textarea')?.value.trim() || null;
+    const isPublic = Boolean($('#replyDrawingPublic')?.checked || form.querySelector('[data-reply-public]')?.checked);
+    const { error } = await client.from('poster_replies').insert({ post_id: postId, author: posterAuthor(), body, kind: 'drawing', image_path, is_public: isPublic });
+    if (error) throw error;
+    setReplyFormOpen(postId, false); setReplyDrawingOverlay(false); await refreshPosterInPlace({ markSeen: true, preserveScroll: true }); setPosterStatus('Drawing reply posted!');
+  } catch (error) { setPosterStatus(error.message || 'Drawing reply failed.', true); }
+}
+function showHolidayInlineDetail(cell) {
+  const detail = cell?.dataset?.holidayDetail; const date = cell?.dataset?.holidayDate; if (!detail || !date) return;
+  const container = cell.closest('#holidayCalendar')?.querySelector('#holidayInlineDetail') || cell.closest('.trip-disclosure')?.querySelector('.trip-inline-detail') || cell.closest('.trip-suggestion')?.querySelector('.trip-inline-detail');
+  if (!container) return;
+  container.hidden = false;
+  container.innerHTML = `<strong>${escapeHtml(displayIsoDate(date))}</strong><div>${detail.split('||').map(row => `<span>${escapeHtml(row)}</span>`).join('')}</div>`;
+  container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 async function submitPosterReply(form, options = {}) {
   const client = getPosterClient();
   if (!client || !form) return;
@@ -2048,12 +2595,15 @@ async function submitPosterReply(form, options = {}) {
       author: posterAuthor(),
       body: body || null,
       kind: media.kind,
-      image_path: media.image_path || null
+      image_path: media.image_path || null,
+      is_public: Boolean(form.querySelector('[data-reply-public]')?.checked)
     });
     if (error) throw error;
     textarea.value = '';
     const fileInput = form.querySelector('[data-reply-file]');
     if (fileInput) fileInput.value = '';
+    const publicToggle = form.querySelector('[data-reply-public]');
+    if (publicToggle) publicToggle.checked = false;
     setReplyFormOpen(postId, false);
     await refreshPosterInPlace({ markSeen: true, preserveScroll: true });
     setPosterStatus('Reply posted!');
@@ -2136,17 +2686,12 @@ function setPosterComposerOpen(open) {
   const composer = $('#posterComposer');
   const button = $('#togglePosterComposer');
   if (!composer || !button) return;
-  if (!open) setDrawingFullscreen(false);
+  if (open && !canInteractWithPosterBoard()) return;
   composer.hidden = !open;
   composer.classList.toggle('poster-composer-collapsed', !open);
   composer.classList.toggle('poster-composer-open', open);
-  button.setAttribute('aria-expanded', String(open));
-  button.textContent = open ? '− Close Post' : '+ Post';
-  if (open) window.setTimeout(() => drawingResizeCanvas?.({ preserve: true }), 80);
-}
-function togglePosterComposer() {
-  const composer = $('#posterComposer');
-  setPosterComposerOpen(Boolean(composer?.hidden));
+  button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  button.textContent = open ? 'Close Post' : '+ Post';
 }
 function initPosterComposerToggle() {
   setPosterComposerOpen(false);
@@ -2204,6 +2749,9 @@ function attachEvents() {
   onIf('#exitDrawingFullscreen', 'click', () => setDrawingFullscreen(false));
   onIf('#fullscreenClearDrawing', 'click', () => $('#clearDrawingBtn')?.click());
   onIf('#fullscreenPostDrawing', 'click', postPosterDrawing);
+  onIf('#cancelReplyDrawing', 'click', () => setReplyDrawingOverlay(false));
+  onIf('#clearReplyDrawing', 'click', () => { replyDrawingHasInk = false; replyDrawingResize?.({ preserve: false }); });
+  onIf('#postReplyDrawing', 'click', submitReplyDrawing);
   let suppressExpandClickUntil = 0;
   document.addEventListener('click', event => {
     const expandButton = event.target.closest('#expandDrawingBtn');
@@ -2251,7 +2799,13 @@ function attachEvents() {
     if (replyDrawingButton) {
       event.preventDefault();
       const form = document.querySelector(`[data-reply-form="${safeCss(replyDrawingButton.dataset.replyDrawing)}"]`);
-      submitPosterReply(form, { useCurrentDrawing: true });
+      setReplyDrawingOverlay(true, form);
+      return;
+    }
+    const holidayCell = event.target.closest('[data-holiday-detail]');
+    if (holidayCell) {
+      event.preventDefault();
+      showHolidayInlineDetail(holidayCell);
       return;
     }
     const replyDeleteButton = event.target.closest('[data-delete-reply-id]');
@@ -2313,11 +2867,16 @@ async function init() {
   try { attachEvents(); } catch (err) { console.warn('Events failed:', err); }
   try { initDialogBackdropClose(); } catch (err) { console.warn(err); }
   try { initPosterBoard(); } catch (err) { console.warn('Poster Board init failed:', err); }
+  try { initFeelingsAndHeart(); } catch (err) { console.warn('Feelings init failed:', err); }
+  try { initTabbarScrollMotion(); } catch (err) { console.warn('Tabbar scroll motion failed:', err); }
+  try { await initPosterAuth(); } catch (err) { console.warn('Poster auth failed:', err); }
+  try { subscribeFeelingsAndHeart(); } catch (err) { console.warn('Feelings realtime failed:', err); }
   try { convertFromF(); } catch (err) { console.warn(err); }
   try { renderSettings(); } catch (err) { console.warn(err); }
   try { renderFxNote(); } catch (err) { console.warn(err); }
   try { renderAllStatic(); } catch (err) { console.warn('Initial render failed:', err); }
   await refreshAll().catch(err => console.warn('Initial refresh failed:', err));
+  try { initSplashScreen(); } catch (err) { console.warn('Splash failed:', err); }
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
 init().catch(error => console.warn('App startup failed:', error));

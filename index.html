@@ -21,16 +21,11 @@
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Taylor & Ellana's Amazing App!" />
-  <meta property="og:image" content="https://taylorlayork.github.io/Taylor-and-Ellanas-Amazing-App/preview-image.png" />
-  <meta property="og:image:type" content="image/png" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Taylor &amp; Ellana's Amazing App!" />
   <meta name="twitter:description" content="A fun shared app for time zones, weather, call windows, and trip planning between Illinois and Sydney." />
   <meta name="twitter:image" content="https://taylorlayork.github.io/Taylor-and-Ellanas-Amazing-App/preview-image.jpg" />
   <link rel="canonical" href="https://taylorlayork.github.io/Taylor-and-Ellanas-Amazing-App/" />
-  <link rel="image_src" href="https://taylorlayork.github.io/Taylor-and-Ellanas-Amazing-App/preview-image.jpg" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=56" />
   <link rel="shortcut icon" href="icons/icon-192.png?v=56" />
@@ -48,11 +43,22 @@
           <button id="refreshAll">Refresh live data</button>
           <button id="openSettings" class="secondary">Edit names & dates</button>
         </div>
+        <div class="auth-status-card" id="authStatusCard">
+          <div class="auth-status-copy">
+            <p class="eyebrow">Access</p>
+            <h3 id="authStatusHeading">Private app access</h3>
+            <p id="authStatusText" class="muted">Sign in with a one-time email code. Taylor is pre-approved; Ellana can claim her account the first time she signs in.</p>
+          </div>
+          <div class="actions compact-actions auth-actions">
+            <button id="openAuthGate" class="secondary" type="button">Sign in / Visitor</button>
+            <button id="signOutBtn" class="secondary" type="button" hidden>Sign out</button>
+          </div>
+        </div>
       </div>
     </header>
 
     <main>
-      <section id="times" class="panel grid two page-section" data-tab-panel="time">
+      <section id="times" class="panel grid two page-section" data-tab-panel="time" data-private-section="true">
         <div class="section-title full"><p class="eyebrow">Right now</p><h2>Local time and day context</h2></div>
         <article class="card" id="place-us"></article>
         <article class="card" id="place-au"></article>
@@ -63,12 +69,12 @@
         </details>
       </section>
 
-      <section id="calls" class="panel page-section" data-tab-panel="time">
+      <section id="calls" class="panel page-section" data-tab-panel="time" data-private-section="true">
         <div class="section-title compact-title"><p class="eyebrow">Connection timing</p><h2>Best upcoming windows to talk</h2><p>Next two reasonable overlap windows.</p></div>
         <div id="callWindows" class="list"></div>
       </section>
 
-      <section id="weather" class="panel page-section" data-tab-panel="weather">
+      <section id="weather" class="panel page-section" data-tab-panel="weather" data-private-section="true">
         <div class="section-title"><p class="eyebrow">Live weather</p><h2>Weather where each of you are</h2></div>
         <div class="grid two"><article class="card" id="weather-us"></article><article class="card" id="weather-au"></article></div>
         <article class="card full temp-converter-card">
@@ -108,9 +114,54 @@
               <div class="actions compact-actions drawing-actions"><button id="expandDrawingBtn" type="button" class="secondary" aria-pressed="false">Full-screen draw</button><button id="clearDrawingBtn" type="button" class="secondary">Clear</button><button id="postDrawingBtn" type="button">Post drawing</button></div>
             </section>
           </div>
-          <p id="posterStatus" class="poster-status muted"></p>
+          <div class="poster-privacy-row"><label class="poster-public-check"><input id="posterMakePublic" type="checkbox" /> <span>Make post public</span></label><span class="muted poster-privacy-hint">Default is private between Taylor and Ellana.</span></div><p id="posterStatus" class="poster-status muted"></p>
         </article>
         <div id="posterFeed" class="poster-feed"></div>
+      </section>
+
+
+      <section id="feelings" class="panel page-section" data-tab-panel="feelings" data-private-section="true">
+        <div class="section-title"><p class="eyebrow">Daily check-in</p><h2>Feelings</h2><p>Pick how you are feeling and it goes to the top of your column with the date and time.</p></div>
+        <article class="card feelings-composer" id="feelingsComposer">
+          <div>
+            <p class="eyebrow">My feeling right now</p>
+            <h3 id="feelingsComposerTitle">Add a feeling</h3>
+          </div>
+          <div class="feelings-input-grid">
+            <label>Feeling
+              <select id="feelingSelect">
+                <option value="">Choose a feeling…</option>
+                <option>Happy</option>
+                <option>Excited</option>
+                <option>Calm</option>
+                <option>Missing you</option>
+                <option>Romantic</option>
+                <option>Grateful</option>
+                <option>Silly</option>
+                <option>Tired</option>
+                <option>Stressed</option>
+                <option>Sad</option>
+                <option>Overwhelmed</option>
+                <option>Need comfort</option>
+              </select>
+            </label>
+            <label class="feelings-note-label">Optional note
+              <input id="feelingNote" type="text" maxlength="180" placeholder="Tiny note, reason, or what would help…" />
+            </label>
+            <button id="saveFeelingBtn" type="button">Add feeling</button>
+          </div>
+          <p id="feelingsStatus" class="muted feelings-status"></p>
+        </article>
+        <div class="feelings-columns">
+          <article class="card feelings-column"><h3>Taylor</h3><div id="feelingsTaylor" class="feelings-list"><p class="muted">Loading…</p></div></article>
+          <article class="card feelings-column"><h3>Ellana</h3><div id="feelingsEllana" class="feelings-list"><p class="muted">Loading…</p></div></article>
+        </div>
+        <article class="card heart-note-composer" id="heartNoteComposer">
+          <div><p class="eyebrow">Surprise note</p><h3>Send a heart envelope</h3><p class="muted">Write a short message and it will appear as a flashing heart envelope on the other person’s app.</p></div>
+          <div class="heart-note-row"><input id="heartNoteInput" type="text" maxlength="160" placeholder="Write a tiny surprise message…" /><button id="sendHeartNoteBtn" type="button">Send envelope</button></div>
+          <p id="heartNoteStatus" class="muted heart-note-status"></p>
+          <div id="heartSentStatus" class="heart-sent-status"><p class="muted">Sent envelope read receipts will show here.</p></div>
+        </article>
       </section>
 
       <section id="extras" class="panel grid two page-section" data-tab-panel="extras">
@@ -129,12 +180,17 @@
         </article>
       </section>
 
-      <section id="planner" class="panel page-section" data-tab-panel="vacation">
-        <div class="section-title planner-suggestions-title"><p class="eyebrow">Trip ideas</p><h2>Potential best 1–2 week trips we could take together</h2><p>Shows up to 4 distinct ranges. Tap an option to open its calendar.</p></div>
-        <div id="tripSuggestions" class="list"></div>
+      <section id="planner" class="panel page-section planner-collapsed-panel" data-tab-panel="vacation" data-private-section="true">
+        <details id="tripSuggestionsDisclosure" class="trip-suggestions-disclosure disclosure-card">
+          <summary>
+            <div class="section-title planner-suggestions-title"><p class="eyebrow">Trip ideas</p><h2>Potential best 1–2 week trips we could take together</h2><p>Collapsed by default. Tap here first when you want to see the suggested date ranges.</p></div>
+            <span class="trip-suggestions-badge">Tap to open</span>
+          </summary>
+          <div id="tripSuggestions" class="list trip-suggestions-collapsible-content"></div>
+        </details>
       </section>
 
-      <section id="holidays" class="panel page-section" data-tab-panel="vacation">
+      <section id="holidays" class="panel page-section" data-tab-panel="vacation" data-private-section="true">
         <div class="section-title"><p class="eyebrow">Planning around time off</p><h2>Upcoming holidays</h2><p>Defaults to the current year. Use the list button for the detailed holiday names and dates.</p></div>
         <div class="toolbar holiday-toolbar">
           <label>Year<select id="holidayYear"></select></label>
@@ -151,7 +207,8 @@
     <button class="tab-slab active" type="button" data-app-tab="time" aria-current="page"><span>Time</span></button>
     <button class="tab-slab" type="button" data-app-tab="weather"><span>Weather</span></button>
     <button class="tab-slab" type="button" data-app-tab="poster"><span>Poster Board</span></button>
-    <button class="tab-slab" type="button" data-app-tab="vacation"><span>Vacation Schedule Helper</span></button>
+    <button class="tab-slab" type="button" data-app-tab="feelings"><span>Feelings</span></button>
+    <button class="tab-slab" type="button" data-app-tab="vacation"><span>Vacation</span></button>
     <button class="tab-slab" type="button" data-app-tab="extras"><span>Extras</span></button>
   </nav>
 
@@ -213,6 +270,65 @@
     <div class="drawing-fullscreen-actions">
       <button id="fullscreenClearDrawing" type="button" class="secondary">Clear</button>
       <button id="fullscreenPostDrawing" type="button">Post drawing</button>
+    </div>
+  </div>
+
+
+
+  <div id="replyDrawingOverlay" class="drawing-fullscreen-overlay reply-drawing-overlay" role="dialog" aria-modal="true" aria-label="Draw a reply" hidden>
+    <div class="drawing-fullscreen-header">
+      <div><strong>Draw reply</strong><span>Fresh canvas for this reply</span></div>
+      <button id="cancelReplyDrawing" type="button" class="secondary">Cancel</button>
+    </div>
+    <div class="drawing-fullscreen-stage"><canvas id="replyDrawingCanvas" aria-label="Reply drawing canvas"></canvas></div>
+    <div class="drawing-fullscreen-note">
+      <label class="poster-note-wrap"><span>Optional reply text</span><textarea id="replyDrawingText" rows="2" placeholder="Write a reply too…"></textarea></label>
+      <label class="poster-public-check poster-reply-visibility"><input id="replyDrawingPublic" type="checkbox" /> <span>Make reply public</span></label>
+    </div>
+    <div class="drawing-fullscreen-actions">
+      <button id="clearReplyDrawing" type="button" class="secondary">Clear</button>
+      <button id="postReplyDrawing" type="button">Post drawing reply</button>
+    </div>
+  </div>
+
+
+  <button id="heartEnvelope" class="heart-envelope" type="button" hidden aria-label="Open heart envelope">
+    <span class="heart-envelope-icon">💌</span>
+    <span class="heart-envelope-count" id="heartEnvelopeCount">1</span>
+  </button>
+
+  <div id="heartMessageReveal" class="heart-message-reveal" hidden>
+    <div class="heart-message-card">
+      <button id="closeHeartReveal" type="button" class="icon heart-close" aria-label="Close">×</button>
+      <div class="heart-pop">💌</div>
+      <p class="eyebrow" id="heartMessageFrom">Heart envelope</p>
+      <h2 id="heartMessageTitle">A tiny message</h2>
+      <p id="heartMessageBody"></p>
+      <button id="heartMessageDone" type="button">Awww, got it</button>
+    </div>
+  </div>
+
+  <div id="splashScreen" class="splash-screen" aria-hidden="true">
+    <div class="splash-screen-card">
+      <img src="icons/apple-touch-icon.png" alt="T and E app icon" class="splash-icon" />
+      <h2>Taylor &amp; Ellana's Amazing App!</h2>
+      <p>Opening your shared world…</p>
+    </div>
+  </div>
+
+  <div id="authGate" class="auth-gate" hidden>
+    <div class="auth-gate-card">
+      <img src="icons/apple-touch-icon.png" alt="T and E app icon" class="auth-gate-icon" />
+      <p class="eyebrow">Private access</p>
+      <h2>Sign in to the real app</h2>
+      <p class="muted">Use a one-time email code. Taylor is pre-approved; Ellana can claim her account the first time she signs in. Visitors can see the layout with private details blurred.</p>
+      <label>Email for OTP login<input id="authEmailInput" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" /></label>
+      <div class="auth-gate-actions">
+        <button id="sendOtpBtn" type="button">Email me a login link</button>
+        <button id="continueVisitorBtn" type="button" class="secondary">Enter as visitor</button>
+      </div>
+      <p id="authGateStatus" class="muted auth-gate-status"></p>
+      <p class="auth-gate-footnote muted">Taylor is already configured. Ellana’s first successful sign-in will claim the Ellana account.</p>
     </div>
   </div>
 
