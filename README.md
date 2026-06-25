@@ -214,3 +214,9 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - Calendar holiday day details now appear beside the tapped date as a small speech-bubble tooltip instead of down below the calendar.
 - Tooltip automatically flips above the date when there is not enough room below.
 - Cache updated to v62-clean.
+
+
+## v63-clean-from-v56
+- Calendar holiday speech bubbles are now anchored from the exact tapped date cell.
+- Holiday bubble positioning uses the visible iPhone viewport and keeps the arrow aimed at the selected date.
+- Cache updated to `across-static-v63-clean`.

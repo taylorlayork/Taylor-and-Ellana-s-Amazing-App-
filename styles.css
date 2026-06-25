@@ -1587,7 +1587,9 @@ dialog,
   border-radius: 999px;
   background: radial-gradient(circle, rgba(20,184,166,.30), transparent 62%);
   pointer-events: none;
+  will-change: left, top, transform, opacity;
 }
+
 
 h1 {
   background: linear-gradient(105deg, #7c3aed 0%, #ec4899 46%, #f59e0b 76%, #14b8a6 100%);

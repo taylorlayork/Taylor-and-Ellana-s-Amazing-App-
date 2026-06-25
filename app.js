@@ -701,7 +701,7 @@ function renderHolidayCalendar(selection, filter, rows, todayIso) {
   const monthKeys = Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, '0')}`);
   const legend = `<div class="holiday-legend"><span class="legend-dot us-dot"></span> Ingleside/USA <span class="legend-dot au-dot"></span> Sydney/Australia-NSW <span class="legend-dot both-dot"></span> Both same date</div>`;
   const months = monthKeys.map(monthKey => buildHolidayMonth(monthKey, byDate, filter)).join('');
-  target.innerHTML = `${legend}<div class="holiday-calendar-grid">${months}</div><div id="holidayTouchDetail" class="holiday-touch-detail" hidden></div>`;
+  target.innerHTML = `${legend}<div class="holiday-calendar-grid">${months}</div>`;
 }
 function buildHolidayMonth(monthKey, byDate, filter) {
   const [year, month] = monthKey.split('-').map(Number);
@@ -728,31 +728,65 @@ function buildHolidayMonth(monthKey, byDate, filter) {
 
 
 function eachDate(startIso, endIso){ const out=[]; let d=new Date(`${startIso}T12:00:00Z`); const end=new Date(`${endIso}T12:00:00Z`); while(d<=end){ out.push(d.toISOString().slice(0,10)); d=new Date(d.getTime()+86400000); } return out; }
+function holidayBubbleElement() {
+  let box = $('#holidayTouchDetail');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'holidayTouchDetail';
+    box.className = 'holiday-touch-detail';
+    box.hidden = true;
+  }
+  if (box.parentElement !== document.body) document.body.appendChild(box);
+  return box;
+}
+
 function positionHolidayBubble(box, cell) {
   if (!box || !cell) return;
   const rect = cell.getBoundingClientRect();
+  const vv = window.visualViewport;
+  const viewportLeft = vv ? vv.offsetLeft : 0;
+  const viewportTop = vv ? vv.offsetTop : 0;
+  const viewportWidth = vv ? vv.width : window.innerWidth;
+  const viewportHeight = vv ? vv.height : window.innerHeight;
+  const safeLeft = viewportLeft + 10;
+  const safeRight = viewportLeft + viewportWidth - 10;
+  const safeTop = viewportTop + 10;
+  const safeBottom = viewportTop + viewportHeight - 10;
   const gap = 10;
-  const width = Math.min(260, Math.max(190, window.innerWidth - 28));
+  const targetX = viewportLeft + rect.left + (rect.width / 2);
+  const belowY = viewportTop + rect.bottom + gap;
+  const aboveY = viewportTop + rect.top - gap;
+  const width = Math.min(260, Math.max(190, viewportWidth - 24));
+
   box.style.width = `${width}px`;
+  box.style.left = '0px';
+  box.style.top = '0px';
+  box.style.transform = 'translate3d(-9999px, -9999px, 0)';
   box.hidden = false;
-  const bubbleRect = box.getBoundingClientRect();
-  let left = rect.left + (rect.width / 2) - (width / 2);
-  left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
-  let top = rect.bottom + gap;
   box.classList.remove('bubble-above');
-  if (top + bubbleRect.height > window.innerHeight - 18) {
-    top = rect.top - bubbleRect.height - gap;
+
+  const bubbleRect = box.getBoundingClientRect();
+  const height = bubbleRect.height || 70;
+  let top = belowY;
+  if (top + height > safeBottom && aboveY - height >= safeTop) {
+    top = aboveY - height;
     box.classList.add('bubble-above');
+  } else if (top + height > safeBottom) {
+    top = Math.max(safeTop, safeBottom - height);
   }
-  if (top < 12) top = Math.min(window.innerHeight - bubbleRect.height - 12, rect.bottom + gap);
+
+  let left = targetX - (width / 2);
+  left = Math.max(safeLeft, Math.min(left, safeRight - width));
+  const arrowLeft = Math.max(18, Math.min(width - 18, targetX - left));
+
   box.style.left = `${left}px`;
-  box.style.top = `${Math.max(12, top)}px`;
-  const arrowLeft = Math.max(18, Math.min(width - 18, rect.left + rect.width / 2 - left));
+  box.style.top = `${top}px`;
+  box.style.transform = 'translate3d(0, 0, 0)';
   box.style.setProperty('--bubble-arrow-left', `${arrowLeft}px`);
 }
 
 function showHolidayTouchDetail(cell) {
-  const box = $('#holidayTouchDetail');
+  const box = holidayBubbleElement();
   if (!box || !cell) return;
   const detail = cell.dataset.holidayDetail || '';
   const date = cell.dataset.holidayDate || '';
