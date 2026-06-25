@@ -1476,6 +1476,19 @@ function postActivityMs(post) {
   const ms = raw ? new Date(raw).getTime() : 0;
   return Number.isFinite(ms) ? ms : 0;
 }
+function activityItemMs(item) {
+  const raw = item?.created_at;
+  const ms = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+function latestActivityAuthor(post) {
+  const activities = [];
+  if (post?.created_at) activities.push({ ms: activityItemMs(post), author: post.author || '' });
+  (post?.poster_replies || []).forEach(reply => activities.push({ ms: activityItemMs(reply), author: reply.author || '' }));
+  (post?.poster_reactions || []).forEach(reaction => activities.push({ ms: activityItemMs(reaction), author: reaction.author || '' }));
+  activities.sort((a, b) => b.ms - a.ms);
+  return activities[0]?.author || '';
+}
 function loadPosterLastSeenMs() {
   const saved = Number(localStorage.getItem(POSTER_LAST_SEEN_KEY) || 0);
   return Number.isFinite(saved) ? saved : 0;
@@ -1486,9 +1499,11 @@ function savePosterLastSeenMs(ms) {
 function newestPosterActivityMs() {
   return Math.max(0, ...posterPosts.map(postActivityMs));
 }
+function isPosterUnread(post) {
+  return postActivityMs(post) > loadPosterLastSeenMs() && latestActivityAuthor(post) !== posterAuthor();
+}
 function posterUnreadCount() {
-  const lastSeen = loadPosterLastSeenMs();
-  return posterPosts.filter(post => postActivityMs(post) > lastSeen).length;
+  return posterPosts.filter(isPosterUnread).length;
 }
 function updatePosterUnreadUi() {
   const button = document.querySelector('[data-app-tab="poster"]');
@@ -1498,20 +1513,24 @@ function updatePosterUnreadUi() {
   if (count > 0) button.setAttribute('data-unread-count', String(Math.min(count, 9)));
   else button.removeAttribute('data-unread-count');
 }
-function markPosterSeenSoon() {
-  if (document.body.dataset.activeTab !== 'poster') return;
+function markAllPosterActivitySeen() {
   const newest = newestPosterActivityMs();
-  if (!newest || newest <= loadPosterLastSeenMs()) return;
-  clearTimeout(posterUnreadClearTimer);
-  posterUnreadClearTimer = window.setTimeout(() => {
-    savePosterLastSeenMs(newest);
-    updatePosterUnreadUi();
-    renderPosterFeed(posterPosts, { keepSeenState: true });
-  }, 2800);
+  if (newest && newest > loadPosterLastSeenMs()) savePosterLastSeenMs(newest);
+  updatePosterUnreadUi();
 }
+function markPosterSeenSoon() {
+  // v54: no automatic timer. New markers remain until clicked, or until leaving Poster Board.
+  updatePosterUnreadUi();
+}
+let posterWasActive = false;
 function handlePosterTabVisibility(tab) {
-  if (tab === 'poster') markPosterSeenSoon();
-  else clearTimeout(posterUnreadClearTimer);
+  const nowPoster = tab === 'poster';
+  if (posterWasActive && !nowPoster) {
+    markAllPosterActivitySeen();
+    renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: true });
+  }
+  posterWasActive = nowPoster;
+  if (nowPoster) updatePosterUnreadUi();
 }
 function normalizePosterRows(rows = []) {
   return rows.map(post => ({
@@ -1532,7 +1551,7 @@ function hasReaction(post, emoji, author = posterAuthor()) {
   return (post.poster_reactions || []).some(reaction => reaction.emoji === emoji && reaction.author === author);
 }
 function reactionControlsHtml(post) {
-  const emojis = ['❤️', '😂', '🥺', '🔥', '👍'];
+  const emojis = ['❤️', '😂', '🥺', '🔥', '👍', '💀', '😡'];
   const groups = groupedReactions(post);
   const buttons = emojis.map(emoji => {
     const authors = groups[emoji] || [];
@@ -1543,12 +1562,23 @@ function reactionControlsHtml(post) {
   const summaries = Object.entries(groups).filter(([, authors]) => authors.length).map(([emoji, authors]) => `<span class="poster-reaction-summary"><strong>${escapeHtml(emoji)}</strong> ${escapeHtml(authors.join(', '))}</span>`).join('');
   return `<div class="poster-reactions"><div class="poster-reaction-buttons">${buttons}</div>${summaries ? `<div class="poster-reaction-summary-row">${summaries}</div>` : ''}</div>`;
 }
+function replyMediaHtml(reply) {
+  const url = posterImageUrl(reply.image_path);
+  if (!url) return '';
+  const alt = `${reply.kind || 'reply'} from ${reply.author || 'Someone'}`;
+  return `<img class="poster-reply-media" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+}
 function repliesHtml(post) {
   const replies = post.poster_replies || [];
   const list = replies.length
-    ? `<div class="poster-replies-list">${replies.map(reply => `<div class="poster-reply"><div><strong>${escapeHtml(reply.author || 'Someone')}</strong><span>${escapeHtml(reply.created_at ? new Date(reply.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')}</span></div><p>${escapeHtml(reply.body || '')}</p></div>`).join('')}</div>`
+    ? `<div class="poster-replies-list">${replies.map(reply => {
+        const body = reply.body ? `<p>${escapeHtml(reply.body)}</p>` : '';
+        const media = replyMediaHtml(reply);
+        const deleteButton = reply.id ? `<button type="button" class="poster-reply-delete" data-delete-reply-id="${escapeHtml(reply.id)}" data-delete-reply-image-path="${escapeHtml(reply.image_path || '')}">Delete</button>` : '';
+        return `<div class="poster-reply"><div class="poster-reply-head"><strong>${escapeHtml(reply.author || 'Someone')}</strong><span>${escapeHtml(reply.created_at ? new Date(reply.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')}</span>${deleteButton}</div>${media}${body}</div>`;
+      }).join('')}</div>`
     : '';
-  return `<div class="poster-replies">${list}<button type="button" class="poster-reply-toggle" data-reply-toggle="${escapeHtml(post.id)}">Reply</button><form class="poster-reply-form" data-reply-form="${escapeHtml(post.id)}" hidden><textarea rows="2" placeholder="Write a reply…"></textarea><div><button type="button" class="secondary" data-reply-cancel="${escapeHtml(post.id)}">Cancel</button><button type="submit">Post reply</button></div></form></div>`;
+  return `<div class="poster-replies">${list}<button type="button" class="poster-reply-toggle" data-reply-toggle="${escapeHtml(post.id)}">Reply</button><form class="poster-reply-form" data-reply-form="${escapeHtml(post.id)}" hidden><textarea rows="2" placeholder="Write a reply…"></textarea><label class="poster-reply-file">Photo / GIF<input type="file" accept="image/*,.gif,image/gif" data-reply-file /></label><div><button type="button" class="secondary" data-reply-cancel="${escapeHtml(post.id)}">Cancel</button><button type="button" class="secondary" data-reply-drawing="${escapeHtml(post.id)}">Use current drawing</button><button type="submit">Post reply</button></div></form></div>`;
 }
 function posterPostHtml(post, options = {}) {
   const safeAuthor = escapeHtml(post.author || 'Someone');
@@ -1558,7 +1588,7 @@ function posterPostHtml(post, options = {}) {
   const lastActivity = post.last_activity_at && post.last_activity_at !== post.created_at
     ? `<span class="poster-activity-note">Last activity ${escapeHtml(new Date(post.last_activity_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}</span>`
     : '';
-  const newMarker = options.unread ? '<span class="poster-new-pill">New</span>' : '';
+  const newMarker = options.unread ? '<button type="button" class="poster-new-pill" data-mark-seen-post="1">New</button>' : '<span class="poster-new-pill poster-new-placeholder" aria-hidden="true">New</span>';
   const meta = `<div class="poster-post-meta"><div><strong>${safeAuthor}</strong><span>${escapeHtml(date)}</span>${lastActivity}</div><div class="poster-post-actions">${newMarker}${deleteButton}</div></div>`;
   const latestClass = options.latest ? ' latest-post' : '';
   const unreadClass = options.unread ? ' poster-unread' : '';
@@ -1573,23 +1603,24 @@ function posterPostHtml(post, options = {}) {
 function renderPosterFeed(posts = posterPosts, options = {}) {
   const feed = $('#posterFeed');
   if (!feed) return;
-  const lastSeen = loadPosterLastSeenMs();
+  const scrollY = options.preserveScroll ? window.scrollY : null;
   posterSeenIds = new Set(posts.map(post => post.id).filter(Boolean));
   feed.innerHTML = posts.length
-    ? posts.map((post, index) => posterPostHtml(post, { latest: index === 0, unread: postActivityMs(post) > lastSeen })).join('')
+    ? posts.map((post, index) => posterPostHtml(post, { latest: index === 0, unread: isPosterUnread(post) })).join('')
     : '<article class="poster-empty card"><strong>No posts yet.</strong><p>Tap + Post to add the first message, photo, or drawing.</p></article>';
   updatePosterUnreadUi();
-  if (!options.keepSeenState) markPosterSeenSoon();
+  if (Number.isFinite(scrollY)) window.setTimeout(() => window.scrollTo({ top: scrollY, behavior: 'auto' }), 0);
 }
 function addPosterPostToTop(post) {
   if (!post?.id || posterSeenIds.has(post.id)) return;
-  loadPosterPosts();
+  loadPosterPosts({ preserveScroll: document.body.dataset.activeTab === 'poster' });
 }
-async function loadPosterPosts() {
+async function loadPosterPosts(options = {}) {
   showPosterSetupNotice();
   const client = getPosterClient();
   if (!client) return;
-  setPosterStatus('Loading poster board…');
+  if (!options.silent) setPosterStatus('Loading poster board…');
+  const scrollY = options.preserveScroll ? window.scrollY : null;
   const { data, error } = await client
     .from('poster_posts')
     .select('*, poster_replies(*), poster_reactions(*)')
@@ -1600,17 +1631,20 @@ async function loadPosterPosts() {
     return;
   }
   posterPosts = normalizePosterRows(data || []);
-  renderPosterFeed(posterPosts);
-  setPosterStatus('');
+  if (options.markSeen) markAllPosterActivitySeen();
+  renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: options.preserveScroll });
+  if (Number.isFinite(scrollY)) window.setTimeout(() => window.scrollTo({ top: scrollY, behavior: 'auto' }), 0);
+  if (!options.silent) setPosterStatus('');
 }
 function subscribePosterRealtime() {
   const client = getPosterClient();
   if (!client || posterChannel) return;
+  const refresh = () => loadPosterPosts({ silent: true, preserveScroll: document.body.dataset.activeTab === 'poster' });
   posterChannel = client
     .channel('poster-board')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_posts' }, () => loadPosterPosts())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_replies' }, () => loadPosterPosts())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_reactions' }, () => loadPosterPosts())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_posts' }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_replies' }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_reactions' }, refresh)
     .subscribe();
 }
 function loadPosterAuthor() {
@@ -1708,7 +1742,7 @@ async function postPosterMessage() {
     await createPosterPost({ author: posterAuthor(), kind: 'message', body });
     input.value = '';
     setPosterStatus('Posted!');
-    await loadPosterPosts();
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
     setPosterComposerOpen(false);
   } catch (error) {
     setPosterStatus(error.message, true);
@@ -1751,7 +1785,7 @@ async function postPosterPhoto() {
     $('#posterPhotoNote') && ($('#posterPhotoNote').value = '');
     togglePosterNote('photoNoteWrap', null, false);
     setPosterStatus('Photo posted!');
-    await loadPosterPosts();
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
     setPosterComposerOpen(false);
   } catch (error) {
     setPosterStatus(error.message, true);
@@ -1887,7 +1921,7 @@ async function postPosterDrawing() {
     togglePosterNote('fullscreenDrawingNoteWrap', null, false);
     setDrawingFullscreen(false);
     setPosterStatus('Drawing posted!');
-    await loadPosterPosts();
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
     setPosterComposerOpen(false);
   } catch (error) {
     setPosterStatus(error.message, true);
@@ -1910,14 +1944,14 @@ async function togglePosterReaction(postId, emoji) {
       const { error } = await client.from('poster_reactions').insert({ post_id: postId, author, emoji });
       if (error) throw error;
     }
-    await loadPosterPosts();
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
     setPosterStatus('');
   } catch (error) {
     setPosterStatus(error.message || 'Reaction failed. Run the updated supabase-setup.sql and try again.', true);
   }
 }
 function safeCss(value) {
-  return window.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/\"/g, '\\"');
+  return window.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/"/g, '\\"');
 }
 function setReplyFormOpen(postId, open) {
   const form = document.querySelector(`[data-reply-form="${safeCss(postId)}"]`);
@@ -1927,26 +1961,83 @@ function setReplyFormOpen(postId, open) {
   if (button) button.textContent = open ? 'Replying…' : 'Reply';
   if (open) form.querySelector('textarea')?.focus();
 }
-async function submitPosterReply(form) {
+function fileIsGif(file) {
+  return Boolean(file && (file.type === 'image/gif' || /\.gif$/i.test(file.name || '')));
+}
+async function uploadReplyMedia(form, useCurrentDrawing = false) {
+  if (useCurrentDrawing) {
+    const canvas = $('#drawingCanvas');
+    if (!canvas || !drawingHasInk) throw new Error('Draw something in the drawing pad first, then use it as a reply.');
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const image_path = await uploadPosterBlob(blob, 'drawing', 'reply-drawing.png');
+    return { kind: 'drawing', image_path };
+  }
+  const file = form.querySelector('[data-reply-file]')?.files?.[0];
+  if (!file) return { kind: 'message', image_path: null };
+  const isGif = fileIsGif(file);
+  const blob = isGif ? file : await resizeImageFile(file);
+  const kind = isGif ? 'gif' : 'photo';
+  const image_path = await uploadPosterBlob(blob, kind, file.name);
+  return { kind, image_path };
+}
+async function submitPosterReply(form, options = {}) {
   const client = getPosterClient();
   if (!client || !form) return;
   const postId = form.dataset.replyForm;
   const textarea = form.querySelector('textarea');
   const body = textarea?.value.trim();
-  if (!postId || !body) {
-    setPosterStatus('Write a reply first.', true);
-    return;
-  }
   try {
+    const media = await uploadReplyMedia(form, Boolean(options.useCurrentDrawing));
+    if (!postId || (!body && !media.image_path)) {
+      setPosterStatus('Write a reply or attach a photo/GIF/drawing first.', true);
+      return;
+    }
     setPosterStatus('Posting reply…');
-    const { error } = await client.from('poster_replies').insert({ post_id: postId, author: posterAuthor(), body });
+    const { error } = await client.from('poster_replies').insert({
+      post_id: postId,
+      author: posterAuthor(),
+      body: body || null,
+      kind: media.kind,
+      image_path: media.image_path || null
+    });
     if (error) throw error;
     textarea.value = '';
+    const fileInput = form.querySelector('[data-reply-file]');
+    if (fileInput) fileInput.value = '';
     setReplyFormOpen(postId, false);
-    await loadPosterPosts();
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
     setPosterStatus('Reply posted!');
   } catch (error) {
     setPosterStatus(error.message || 'Reply failed. Run the updated supabase-setup.sql and try again.', true);
+  }
+}
+async function deletePosterReply(replyId, imagePath = '') {
+  const client = getPosterClient();
+  if (!client || !replyId) return;
+  const ok = confirm('Delete this reply?');
+  if (!ok) return;
+  const button = document.querySelector(`[data-delete-reply-id="${safeCss(replyId)}"]`);
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Deleting…';
+    }
+    setPosterStatus('Deleting reply…');
+    const { data, error } = await client.from('poster_replies').delete().eq('id', replyId).select('id');
+    if (error) throw error;
+    if (Array.isArray(data) && data.length === 0) throw new Error('Reply delete did not go through. Run the updated supabase-setup.sql so DELETE is allowed.');
+    if (imagePath) {
+      const { error: storageError } = await client.storage.from(POSTER_BUCKET).remove([imagePath]);
+      if (storageError) console.warn('Reply media delete skipped:', storageError.message);
+    }
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
+    setPosterStatus('Reply deleted.');
+  } catch (error) {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Delete';
+    }
+    setPosterStatus(error.message || 'Could not delete reply. Run the updated supabase-setup.sql and try again.', true);
   }
 }
 async function deletePosterPost(postId, imagePath = '') {
@@ -1957,8 +2048,7 @@ async function deletePosterPost(postId, imagePath = '') {
   }
   const ok = confirm('Delete this Poster Board post?');
   if (!ok) return;
-  const safeSelector = String(postId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const button = document.querySelector(`[data-delete-poster-id="${safeSelector}"]`);
+  const button = document.querySelector(`[data-delete-poster-id="${safeCss(postId)}"]`);
   const card = button?.closest('.poster-post');
   try {
     if (button) {
@@ -1966,19 +2056,22 @@ async function deletePosterPost(postId, imagePath = '') {
       button.textContent = 'Deleting…';
     }
     setPosterStatus('Deleting post…');
+    const post = posterPosts.find(item => item.id === postId);
+    const replyImages = (post?.poster_replies || []).map(reply => reply.image_path).filter(Boolean);
     const { data, error } = await client.from('poster_posts').delete().eq('id', postId).select('id');
     if (error) throw error;
     if (Array.isArray(data) && data.length === 0) {
       throw new Error('Delete did not go through. Run the updated supabase-setup.sql in Supabase so DELETE is allowed.');
     }
-    if (imagePath) {
-      const { error: storageError } = await client.storage.from(POSTER_BUCKET).remove([imagePath]);
-      if (storageError) console.warn('Image delete skipped:', storageError.message);
+    const pathsToRemove = [imagePath, ...replyImages].filter(Boolean);
+    if (pathsToRemove.length) {
+      const { error: storageError } = await client.storage.from(POSTER_BUCKET).remove(pathsToRemove);
+      if (storageError) console.warn('Media delete skipped:', storageError.message);
     }
     card?.remove();
     posterSeenIds.delete(postId);
     setPosterStatus('Deleted.');
-    await loadPosterPosts();
+    await loadPosterPosts({ markSeen: true, preserveScroll: true });
   } catch (error) {
     if (button) {
       button.disabled = false;
@@ -2100,6 +2193,39 @@ function attachEvents() {
     if (replyCancel) {
       event.preventDefault();
       setReplyFormOpen(replyCancel.dataset.replyCancel, false);
+      return;
+    }
+    const replyDrawingButton = event.target.closest('[data-reply-drawing]');
+    if (replyDrawingButton) {
+      event.preventDefault();
+      const form = document.querySelector(`[data-reply-form="${safeCss(replyDrawingButton.dataset.replyDrawing)}"]`);
+      submitPosterReply(form, { useCurrentDrawing: true });
+      return;
+    }
+    const replyDeleteButton = event.target.closest('[data-delete-reply-id]');
+    if (replyDeleteButton) {
+      event.preventDefault();
+      deletePosterReply(replyDeleteButton.dataset.deleteReplyId, replyDeleteButton.dataset.deleteReplyImagePath || '');
+      return;
+    }
+    const markSeenButton = event.target.closest('[data-mark-seen-post]');
+    if (markSeenButton) {
+      event.preventDefault();
+      const card = markSeenButton.closest('.poster-post.poster-unread');
+      const post = posterPosts.find(item => item.id === card?.dataset.posterPostId);
+      if (post) {
+        savePosterLastSeenMs(Math.max(loadPosterLastSeenMs(), postActivityMs(post)));
+        renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: true });
+      }
+      return;
+    }
+    const unreadPost = event.target.closest('.poster-post.poster-unread');
+    if (unreadPost && !event.target.closest('button, a, input, textarea, label, select')) {
+      const post = posterPosts.find(item => item.id === unreadPost.dataset.posterPostId);
+      if (post) {
+        savePosterLastSeenMs(Math.max(loadPosterLastSeenMs(), postActivityMs(post)));
+        renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: true });
+      }
       return;
     }
     const tempButton = event.target.closest('[data-temp-toggle]');

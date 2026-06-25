@@ -1,6 +1,6 @@
 -- Taylor & Ellana Poster Board setup for Supabase
 -- Paste this whole file into Supabase > SQL Editor > New query > Run.
--- v48 adds replies, reactions, latest-activity sorting, and unread support.
+-- v54 adds reply deletion, media replies, more reactions, and updated unread behavior.
 
 create table if not exists public.poster_posts (
   id uuid primary key default gen_random_uuid(),
@@ -22,7 +22,9 @@ create table if not exists public.poster_replies (
   post_id uuid not null references public.poster_posts(id) on delete cascade,
   created_at timestamptz not null default now(),
   author text not null check (author in ('Taylor', 'Ellana')),
-  body text not null check (length(trim(body)) > 0)
+  kind text not null default 'message',
+  body text,
+  image_path text
 );
 
 create table if not exists public.poster_reactions (
@@ -30,9 +32,31 @@ create table if not exists public.poster_reactions (
   post_id uuid not null references public.poster_posts(id) on delete cascade,
   created_at timestamptz not null default now(),
   author text not null check (author in ('Taylor', 'Ellana')),
-  emoji text not null check (emoji in ('❤️', '😂', '🥺', '🔥', '👍')),
+  emoji text not null check (emoji in ('❤️', '😂', '🥺', '🔥', '👍', '💀', '😡')),
   unique (post_id, author, emoji)
 );
+
+alter table public.poster_replies add column if not exists kind text;
+alter table public.poster_replies add column if not exists image_path text;
+alter table public.poster_replies alter column body drop not null;
+update public.poster_replies set kind = coalesce(kind, 'message');
+alter table public.poster_replies alter column kind set default 'message';
+alter table public.poster_replies alter column kind set not null;
+do $$
+begin
+  alter table public.poster_replies add constraint poster_replies_kind_check check (kind in ('message', 'photo', 'drawing', 'gif'));
+exception
+  when duplicate_object then null;
+end $$;
+do $$
+begin
+  alter table public.poster_replies add constraint poster_replies_has_content_check check ((body is not null and length(trim(body)) > 0) or image_path is not null);
+exception
+  when duplicate_object then null;
+end $$;
+
+alter table public.poster_reactions drop constraint if exists poster_reactions_emoji_check;
+alter table public.poster_reactions add constraint poster_reactions_emoji_check check (emoji in ('❤️', '😂', '🥺', '🔥', '👍', '💀', '😡'));
 
 alter table public.poster_posts enable row level security;
 alter table public.poster_replies enable row level security;
@@ -74,7 +98,11 @@ drop policy if exists "Poster replies can be added" on public.poster_replies;
 create policy "Poster replies can be added"
 on public.poster_replies
 for insert
-with check (author in ('Taylor', 'Ellana'));
+with check (
+  author in ('Taylor', 'Ellana')
+  and kind in ('message', 'photo', 'drawing', 'gif')
+  and ((body is not null and length(trim(body)) > 0) or image_path is not null)
+);
 
 drop policy if exists "Poster replies can be deleted" on public.poster_replies;
 create policy "Poster replies can be deleted"

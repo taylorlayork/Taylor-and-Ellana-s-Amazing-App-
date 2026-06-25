@@ -154,3 +154,18 @@ Run the updated `supabase-setup.sql` again. It adds replies, reactions, latest-a
 
 
 Version 52 updates the public GitHub Pages URL references to https://taylorlayork.github.io/Taylor-and-Ellanas-Amazing-App/ for social previews and cache refreshes.
+
+
+## v53 notes
+- Updated Facebook/Messenger Open Graph image tags to the new GitHub Pages URL with a v53 cache-busting query.
+- Replaced browser favicon/icon.svg and PNG icon assets with the smoother T&E icon.
+- Added iPhone input anti-zoom styles and viewport settings.
+
+
+## v54
+- Poster Board replies can now include text, photos, GIFs, or the current drawing canvas.
+- Replies can be deleted.
+- Added 💀 and 😡 reactions.
+- New/unread markers stay stable until clicked or until leaving Poster Board.
+- iPhone Home Screen icon badging is not included; the app keeps the in-app Poster Board tab badge.
+- Run supabase-setup.sql again for the new reply media columns and reaction permissions.

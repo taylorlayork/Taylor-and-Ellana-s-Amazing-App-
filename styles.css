@@ -3365,3 +3365,91 @@ body.drawing-fullscreen .bottom-tabbar {
 .add-note-toggle:active {
   transform: translateY(1px) scale(.98);
 }
+
+
+/* v53: prevent iPhone focus zoom on inputs/textareas/selects. */
+input,
+textarea,
+select,
+button {
+  font-size: 16px;
+}
+.poster-board input,
+.poster-board textarea,
+.poster-board select,
+.settings input,
+.settings textarea,
+.settings select,
+.temp-converter input,
+.converter input {
+  font-size: 16px !important;
+}
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* v54: reply media, reply deletion, stable unread cards */
+.poster-new-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+.poster-post.poster-unread {
+  min-height: inherit;
+}
+.poster-new-pill {
+  border: 0;
+  cursor: pointer;
+}
+.poster-reply-head {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  flex-wrap: wrap;
+  margin-bottom: .24rem;
+}
+.poster-reply-delete {
+  margin-left: auto;
+  min-height: 1.75rem;
+  padding: .24rem .55rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(190,18,60,.18);
+  color: var(--bad);
+  font-size: .72rem;
+  font-weight: 900;
+  box-shadow: none;
+}
+.poster-reply-media {
+  width: min(100%, 420px);
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: .85rem;
+  border: 1px solid rgba(255,255,255,.58);
+  background: rgba(255,255,255,.45);
+  margin: .25rem 0 .42rem;
+  display: block;
+}
+.poster-reply-file {
+  display: grid;
+  gap: .25rem;
+  font-size: .8rem;
+  color: var(--muted);
+  font-weight: 850;
+}
+.poster-reply-file input[type="file"] {
+  padding: .55rem;
+  border-radius: .85rem;
+  border: 1px dashed rgba(94,106,210,.28);
+  background: rgba(255,255,255,.46);
+}
+.poster-reply-form > div {
+  justify-content: flex-start;
+}
+@media (max-width: 560px) {
+  .poster-reply-delete { margin-left: 0; }
+  .poster-reply-form > div button { flex: 1 1 8.5rem; }
+}
