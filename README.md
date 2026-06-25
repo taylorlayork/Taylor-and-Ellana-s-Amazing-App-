@@ -91,3 +91,17 @@ Version 38 notes:
 - Replaces the social preview image with the simple title-only share image.
 - The CALL NOW alert flashes strongly for the first 45 seconds of an open window, can be tapped to calm it immediately, and then stays calm for that same call window.
 - iPhone may require deleting and re-adding the Home Screen bookmark to refresh the icon.
+
+
+Poster Board Supabase setup
+---------------------------
+1. In Supabase, open your project and go to SQL Editor > New query.
+2. Open `supabase-setup.sql` from this ZIP, paste the whole thing, and click Run.
+3. Go to Project Settings > Data API.
+4. Copy the Project URL and the anon/public key.
+5. Open `supabase-config.js` in the website files and paste those values:
+   - `url: 'YOUR_PROJECT_URL'`
+   - `anonKey: 'YOUR_ANON_PUBLIC_KEY'`
+6. Upload/commit the full website again.
+
+After that, the Poster Board tab can post messages, photos, and drawings. New posts are loaded newest-first and Supabase Realtime pushes new posts to the top automatically.

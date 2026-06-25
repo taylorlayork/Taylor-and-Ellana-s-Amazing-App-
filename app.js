@@ -1206,7 +1206,7 @@ function updateTabIndicator(tabbar, activeButton, options = {}) {
 }
 
 function getCurrentTabOrder() {
-  const fallback = ['time', 'weather', 'vacation', 'extras'];
+  const fallback = ['time', 'weather', 'poster', 'vacation', 'extras'];
   try {
     const stored = JSON.parse(localStorage.getItem('across.tabOrder'));
     if (Array.isArray(stored) && fallback.every(tab => stored.includes(tab))) return stored.filter(tab => fallback.includes(tab));
@@ -1243,7 +1243,7 @@ function initBottomTabs() {
   let tabs = getOrderedTabs();
   if (!tabs.length) return;
   const hashTab = location.hash ? location.hash.replace('#', '') : '';
-  const hashMap = { times: 'time', calls: 'time', extras: 'extras', differences: 'extras', weather: 'weather', holidays: 'vacation', planner: 'vacation' };
+  const hashMap = { times: 'time', calls: 'time', extras: 'extras', differences: 'extras', weather: 'weather', poster: 'poster', holidays: 'vacation', planner: 'vacation' };
 
   const activateButton = (button, options = {}) => {
     if (!button) return;
@@ -1399,6 +1399,266 @@ function initBottomTabs() {
   });
 }
 
+
+const POSTER_BUCKET = 'poster-media';
+let posterClient = null;
+let posterChannel = null;
+let posterSeenIds = new Set();
+let drawingContext = null;
+let drawingHasInk = false;
+let drawingPointerId = null;
+
+function posterConfig() {
+  return window.ACROSS_SUPABASE_CONFIG || {};
+}
+function hasPosterConfig() {
+  const cfg = posterConfig();
+  return Boolean(cfg.url && cfg.anonKey && !String(cfg.url).includes('YOUR_') && !String(cfg.anonKey).includes('YOUR_'));
+}
+function getPosterClient() {
+  if (!hasPosterConfig() || !window.supabase?.createClient) return null;
+  if (!posterClient) {
+    const cfg = posterConfig();
+    posterClient = window.supabase.createClient(cfg.url, cfg.anonKey);
+  }
+  return posterClient;
+}
+function setPosterStatus(message, isError = false) {
+  const el = $('#posterStatus');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('error', Boolean(isError));
+}
+function showPosterSetupNotice() {
+  const notice = $('#posterSetupNotice');
+  const feed = $('#posterFeed');
+  if (!notice) return;
+  if (hasPosterConfig() && window.supabase?.createClient) {
+    notice.hidden = true;
+    if (feed && !feed.innerHTML.trim()) feed.innerHTML = '<p class="muted">Loading poster board…</p>';
+    return;
+  }
+  notice.hidden = false;
+  notice.innerHTML = `<strong>Finish Supabase setup first.</strong><span>Run <code>supabase-setup.sql</code> in Supabase, then paste your Project URL and anon public key into <code>supabase-config.js</code>.</span>`;
+  if (feed) feed.innerHTML = '<article class="poster-empty card"><strong>Poster Board is ready in the website.</strong><p>It will go live after Supabase is configured.</p></article>';
+}
+function posterImageUrl(path) {
+  const client = getPosterClient();
+  if (!client || !path) return '';
+  const { data } = client.storage.from(POSTER_BUCKET).getPublicUrl(path);
+  return data?.publicUrl || '';
+}
+function posterPostHtml(post) {
+  const safeAuthor = escapeHtml(post.author || 'Someone');
+  const date = post.created_at ? new Date(post.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const meta = `<div class="poster-post-meta"><strong>${safeAuthor}</strong><span>${escapeHtml(date)}</span></div>`;
+  if (post.kind === 'message') {
+    return `<article class="poster-post card message-post">${meta}<p>${escapeHtml(post.body || '')}</p></article>`;
+  }
+  const url = posterImageUrl(post.image_path);
+  return `<article class="poster-post card media-post">${meta}<img src="${escapeHtml(url)}" alt="${escapeHtml(post.kind)} from ${safeAuthor}" loading="lazy" /></article>`;
+}
+function renderPosterFeed(posts = []) {
+  const feed = $('#posterFeed');
+  if (!feed) return;
+  posterSeenIds = new Set(posts.map(post => post.id).filter(Boolean));
+  feed.innerHTML = posts.length ? posts.map(posterPostHtml).join('') : '<article class="poster-empty card"><strong>No posts yet.</strong><p>Be the first to post a message, photo, or drawing.</p></article>';
+}
+function addPosterPostToTop(post) {
+  const feed = $('#posterFeed');
+  if (!feed || !post?.id || posterSeenIds.has(post.id)) return;
+  posterSeenIds.add(post.id);
+  const empty = feed.querySelector('.poster-empty');
+  if (empty) empty.remove();
+  feed.insertAdjacentHTML('afterbegin', posterPostHtml(post));
+}
+async function loadPosterPosts() {
+  showPosterSetupNotice();
+  const client = getPosterClient();
+  if (!client) return;
+  setPosterStatus('Loading poster board…');
+  const { data, error } = await client
+    .from('poster_posts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(60);
+  if (error) {
+    setPosterStatus(`Poster Board error: ${error.message}`, true);
+    return;
+  }
+  renderPosterFeed(data || []);
+  setPosterStatus('');
+}
+function subscribePosterRealtime() {
+  const client = getPosterClient();
+  if (!client || posterChannel) return;
+  posterChannel = client
+    .channel('poster-board')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poster_posts' }, payload => addPosterPostToTop(payload.new))
+    .subscribe();
+}
+function posterAuthor() {
+  return $('#posterAuthor')?.value || 'Taylor';
+}
+function cleanFileName(name = 'upload') {
+  return String(name).replace(/[^a-z0-9._-]+/gi, '-').slice(-90);
+}
+async function uploadPosterBlob(blob, kind, originalName = 'upload.png') {
+  const client = getPosterClient();
+  if (!client) {
+    showPosterSetupNotice();
+    return null;
+  }
+  const ext = kind === 'drawing' ? 'png' : (cleanFileName(originalName).split('.').pop() || 'jpg');
+  const filePath = `${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error } = await client.storage.from(POSTER_BUCKET).upload(filePath, blob, {
+    contentType: blob.type || (kind === 'drawing' ? 'image/png' : 'image/jpeg'),
+    upsert: false
+  });
+  if (error) throw error;
+  return filePath;
+}
+async function createPosterPost(post) {
+  const client = getPosterClient();
+  if (!client) {
+    showPosterSetupNotice();
+    return;
+  }
+  const { error } = await client.from('poster_posts').insert(post);
+  if (error) throw error;
+}
+async function postPosterMessage() {
+  const input = $('#posterMessage');
+  const body = input?.value.trim();
+  if (!body) {
+    setPosterStatus('Write a message first.', true);
+    return;
+  }
+  try {
+    setPosterStatus('Posting message…');
+    await createPosterPost({ author: posterAuthor(), kind: 'message', body });
+    input.value = '';
+    setPosterStatus('Posted!');
+    await loadPosterPosts();
+  } catch (error) {
+    setPosterStatus(error.message, true);
+  }
+}
+async function resizeImageFile(file, maxSide = 1600) {
+  if (!file.type.startsWith('image/')) return file;
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = url;
+  });
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, width, height);
+  URL.revokeObjectURL(url);
+  return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+}
+async function postPosterPhoto() {
+  const input = $('#posterPhotoInput');
+  const file = input?.files?.[0];
+  if (!file) {
+    setPosterStatus('Choose a photo first.', true);
+    return;
+  }
+  try {
+    setPosterStatus('Uploading photo…');
+    const blob = await resizeImageFile(file);
+    const image_path = await uploadPosterBlob(blob, 'photo', file.name);
+    await createPosterPost({ author: posterAuthor(), kind: 'photo', image_path });
+    input.value = '';
+    setPosterStatus('Photo posted!');
+    await loadPosterPosts();
+  } catch (error) {
+    setPosterStatus(error.message, true);
+  }
+}
+function setupDrawingCanvas() {
+  const canvas = $('#drawingCanvas');
+  if (!canvas) return;
+  const resize = () => {
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(280, Math.round(rect.width || 600));
+    const height = Math.max(240, Math.round(rect.height || 320));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    drawingContext = canvas.getContext('2d');
+    drawingContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawingContext.fillStyle = '#fffafc';
+    drawingContext.fillRect(0, 0, width, height);
+    drawingContext.lineCap = 'round';
+    drawingContext.lineJoin = 'round';
+    drawingContext.lineWidth = 7;
+    drawingContext.strokeStyle = '#ec4899';
+    drawingHasInk = false;
+  };
+  resize();
+  const point = event => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+  canvas.addEventListener('pointerdown', event => {
+    event.preventDefault();
+    drawingPointerId = event.pointerId;
+    canvas.setPointerCapture?.(event.pointerId);
+    const p = point(event);
+    drawingContext.beginPath();
+    drawingContext.moveTo(p.x, p.y);
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (drawingPointerId !== event.pointerId) return;
+    event.preventDefault();
+    const p = point(event);
+    drawingContext.lineTo(p.x, p.y);
+    drawingContext.stroke();
+    drawingHasInk = true;
+  });
+  const stop = event => {
+    if (drawingPointerId !== null && event?.pointerId !== undefined && drawingPointerId !== event.pointerId) return;
+    drawingPointerId = null;
+  };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+  $('#clearDrawingBtn')?.addEventListener('click', resize);
+}
+async function postPosterDrawing() {
+  const canvas = $('#drawingCanvas');
+  if (!canvas || !drawingHasInk) {
+    setPosterStatus('Draw something first.', true);
+    return;
+  }
+  try {
+    setPosterStatus('Uploading drawing…');
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const image_path = await uploadPosterBlob(blob, 'drawing', 'drawing.png');
+    await createPosterPost({ author: posterAuthor(), kind: 'drawing', image_path });
+    $('#clearDrawingBtn')?.click();
+    setPosterStatus('Drawing posted!');
+    await loadPosterPosts();
+  } catch (error) {
+    setPosterStatus(error.message, true);
+  }
+}
+function initPosterBoard() {
+  setupDrawingCanvas();
+  showPosterSetupNotice();
+  if (hasPosterConfig()) {
+    loadPosterPosts();
+    subscribePosterRealtime();
+  }
+}
+
 function closeDialogOnBackdropClick(dialog) {
   if (!dialog) return;
   dialog.addEventListener('click', event => {
@@ -1429,6 +1689,9 @@ function attachEvents() {
   onIf('#closeChartDialog', 'click', () => $('#chartDialog').close());
   onIf('#openHolidayList', 'click', () => { renderHolidays(); $('#holidayListDialog').showModal(); });
   onIf('#closeHolidayListDialog', 'click', () => $('#holidayListDialog').close());
+  onIf('#postMessageBtn', 'click', postPosterMessage);
+  onIf('#postPhotoBtn', 'click', postPosterPhoto);
+  onIf('#postDrawingBtn', 'click', postPosterDrawing);
   document.addEventListener('click', event => {
     const tempButton = event.target.closest('[data-temp-toggle]');
     if (tempButton) toggleWeatherUnit(tempButton.dataset.tempToggle);
@@ -1451,6 +1714,7 @@ async function init() {
   initBottomTabs();
   attachEvents();
   initDialogBackdropClose();
+  initPosterBoard();
   convertFromF();
   renderSettings();
   renderFxNote();

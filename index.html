@@ -65,6 +65,34 @@
         </article>
       </section>
 
+      <section id="poster" class="panel page-section" data-tab-panel="poster">
+        <div class="section-title"><p class="eyebrow">Shared board</p><h2>Poster Board</h2><p>Post messages, phone photos, or finger drawings. Newest posts appear at the top automatically.</p></div>
+        <article class="card poster-composer">
+          <div id="posterSetupNotice" class="poster-setup-notice" hidden></div>
+          <div class="poster-form-grid">
+            <label>Who is posting?<select id="posterAuthor"><option value="Taylor">Taylor</option><option value="Ellana">Ellana</option></select></label>
+            <label class="full">Message<textarea id="posterMessage" rows="3" placeholder="Write something sweet, funny, random, or dramatic…"></textarea></label>
+            <div class="actions compact-actions full"><button id="postMessageBtn" type="button">Post message</button></div>
+          </div>
+          <div class="poster-tool-grid">
+            <section class="poster-tool-card">
+              <h3>Post a photo</h3>
+              <p class="muted">Choose a picture from your phone, then post it to the board.</p>
+              <input id="posterPhotoInput" type="file" accept="image/*" />
+              <button id="postPhotoBtn" type="button">Post photo</button>
+            </section>
+            <section class="poster-tool-card drawing-tool">
+              <h3>Draw with your finger</h3>
+              <p class="muted">Use your finger on iPhone or your mouse on computer.</p>
+              <canvas id="drawingCanvas" aria-label="Finger drawing canvas"></canvas>
+              <div class="actions compact-actions"><button id="clearDrawingBtn" type="button" class="secondary">Clear</button><button id="postDrawingBtn" type="button">Post drawing</button></div>
+            </section>
+          </div>
+          <p id="posterStatus" class="poster-status muted"></p>
+        </article>
+        <div id="posterFeed" class="poster-feed"></div>
+      </section>
+
       <section id="extras" class="panel grid two page-section" data-tab-panel="extras">
         <div class="section-title full"><p class="eyebrow">Extras</p><h2>Helpful extras to keep handy</h2></div>
         <article class="card" id="connectionPrompt"></article>
@@ -103,6 +131,7 @@
   <nav class="bottom-tabbar" id="bottomTabbar" aria-label="Main app sections">
     <button class="tab-slab active" type="button" data-app-tab="time" aria-current="page"><span>Time</span></button>
     <button class="tab-slab" type="button" data-app-tab="weather"><span>Weather</span></button>
+    <button class="tab-slab" type="button" data-app-tab="poster"><span>Poster Board</span></button>
     <button class="tab-slab" type="button" data-app-tab="vacation"><span>Vacation Schedule Helper</span></button>
     <button class="tab-slab" type="button" data-app-tab="extras"><span>Extras</span></button>
   </nav>
@@ -139,6 +168,8 @@
     </div>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script src="app.js" type="module"></script>
 </body>
 </html>
