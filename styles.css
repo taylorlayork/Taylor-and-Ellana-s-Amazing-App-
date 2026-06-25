@@ -2887,63 +2887,58 @@ body.is-standalone-app {
 }
 
 
-/* v43: remove Extras cue, reliable post delete state, and full-screen phone drawing */
-#extras .card.full {
-  max-width: 100%;
-}
-.poster-delete-button[disabled] {
-  opacity: .62;
-  cursor: progress;
-}
-.drawing-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .5rem;
-}
-#expandDrawingBtn[aria-pressed="true"] {
-  background: linear-gradient(135deg, rgba(31,35,49,.92), rgba(139,92,246,.82));
-  color: #fff;
-  border-color: rgba(255,255,255,.28);
-}
+/* v45: stability fixes + phone-friendly full-screen drawing */
+html.drawing-fullscreen,
 body.drawing-fullscreen {
-  overflow: hidden;
+  height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none;
 }
 body.drawing-fullscreen .drawing-tool {
-  position: fixed;
-  inset: max(.4rem, env(safe-area-inset-top, 0px)) max(.4rem, env(safe-area-inset-right, 0px)) max(.4rem, env(safe-area-inset-bottom, 0px)) max(.4rem, env(safe-area-inset-left, 0px));
-  z-index: 9999;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: .65rem;
-  padding: .85rem;
-  border-radius: 1.35rem;
-  background: linear-gradient(145deg, rgba(255,250,252,.98), rgba(245,239,255,.98));
-  box-shadow: 0 25px 90px rgba(31,35,49,.34), inset 0 1px 0 rgba(255,255,255,.72);
+  position: fixed !important;
+  z-index: 2147483000 !important;
+  inset: max(.45rem, env(safe-area-inset-top, 0px)) max(.45rem, env(safe-area-inset-right, 0px)) max(.45rem, env(safe-area-inset-bottom, 0px)) max(.45rem, env(safe-area-inset-left, 0px)) !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  gap: .65rem !important;
+  width: auto !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  padding: .85rem !important;
+  border-radius: 1.25rem !important;
+  background: linear-gradient(145deg, rgba(255,250,252,.99), rgba(245,239,255,.99)) !important;
+  box-shadow: 0 25px 90px rgba(31,35,49,.34), inset 0 1px 0 rgba(255,255,255,.72) !important;
 }
 body.drawing-fullscreen .drawing-tool h3,
 body.drawing-fullscreen .drawing-tool p {
-  margin: 0;
+  margin: 0 !important;
 }
 body.drawing-fullscreen #drawingCanvas {
   width: 100% !important;
   height: 100% !important;
   min-height: 0 !important;
   max-height: none !important;
-  border-radius: 1rem;
-}
-body.drawing-fullscreen .bottom-tabbar {
-  opacity: 0;
-  pointer-events: none;
+  touch-action: none !important;
+  border-radius: 1rem !important;
 }
 body.drawing-fullscreen .drawing-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.25fr;
-  gap: .45rem;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr 1.25fr !important;
+  gap: .45rem !important;
+}
+body.drawing-fullscreen .bottom-tabbar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+#expandDrawingBtn[aria-pressed="true"] {
+  background: linear-gradient(135deg, rgba(31,35,49,.92), rgba(139,92,246,.82));
+  color: #fff;
+  border-color: rgba(255,255,255,.28);
 }
 @media (max-width: 560px) {
   body.drawing-fullscreen .drawing-tool {
-    inset: max(.35rem, env(safe-area-inset-top, 0px)) max(.35rem, env(safe-area-inset-right, 0px)) max(.35rem, env(safe-area-inset-bottom, 0px)) max(.35rem, env(safe-area-inset-left, 0px));
-    border-radius: 1.15rem;
+    inset: max(.35rem, env(safe-area-inset-top, 0px)) max(.35rem, env(safe-area-inset-right, 0px)) max(.35rem, env(safe-area-inset-bottom, 0px)) max(.35rem, env(safe-area-inset-left, 0px)) !important;
+    border-radius: 1.05rem !important;
   }
   body.drawing-fullscreen .drawing-actions button {
     min-height: 2.85rem;

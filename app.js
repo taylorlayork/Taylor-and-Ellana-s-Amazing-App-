@@ -1012,14 +1012,24 @@ function setDefaultTripDates() {
   $('#tripStart').value = nextWeek.toISOString().slice(0,10);
   $('#tripEnd').value = tenDays.toISOString().slice(0,10);
 }
-function renderAllStatic(){ renderTimes(); renderCallWindows(); renderHolidays(); renderConnectionPrompt(); renderTripSuggestions(); }
+function renderAllStatic(){ renderTimes(); renderCallWindows(); renderHolidays(); renderTripSuggestions(); }
 async function refreshAll() {
-  $('#refreshAll').disabled = true;
-  $('#refreshAll').textContent = 'Refreshing…';
-  await Promise.all([loadWeather(), loadHolidays(), loadFx()]);
-  renderAllStatic(); renderTripResults();
-  $('#refreshAll').disabled = false;
-  $('#refreshAll').textContent = 'Refresh live data';
+  const button = $('#refreshAll');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Refreshing…';
+  }
+  const jobs = [loadWeather, loadHolidays, loadFx];
+  const results = await Promise.allSettled(jobs.map(job => job()));
+  results.forEach(result => {
+    if (result.status === 'rejected') console.warn('Refresh job failed:', result.reason);
+  });
+  try { renderAllStatic(); } catch (err) { console.warn('Static render failed:', err); }
+  try { renderTripResults(); } catch (err) { console.warn('Trip render failed:', err); }
+  if (button) {
+    button.disabled = false;
+    button.textContent = 'Refresh live data';
+  }
 }
 
 
@@ -1618,18 +1628,17 @@ function setupDrawingCanvas() {
       oldCanvas.getContext('2d').drawImage(canvas, 0, 0);
     }
     const rect = canvas.getBoundingClientRect();
-    const cssWidth = Math.max(280, Math.round(rect.width || 600));
-    const cssHeight = Math.max(240, Math.round(rect.height || 320));
+    const cssWidth = Math.max(280, Math.round(rect.width || canvas.clientWidth || 600));
+    const cssHeight = Math.max(240, Math.round(rect.height || canvas.clientHeight || 320));
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     canvas.width = Math.round(cssWidth * dpr);
     canvas.height = Math.round(cssHeight * dpr);
     drawingContext = canvas.getContext('2d');
+    if (!drawingContext) return;
     drawingContext.setTransform(1, 0, 0, 1, 0, 0);
     drawingContext.fillStyle = '#fffafc';
     drawingContext.fillRect(0, 0, canvas.width, canvas.height);
-    if (oldCanvas) {
-      drawingContext.drawImage(oldCanvas, 0, 0, canvas.width, canvas.height);
-    }
+    if (oldCanvas) drawingContext.drawImage(oldCanvas, 0, 0, canvas.width, canvas.height);
     drawingContext.lineCap = 'round';
     drawingContext.lineJoin = 'round';
     drawingContext.lineWidth = Math.max(5, 7 * dpr);
@@ -1649,6 +1658,7 @@ function setupDrawingCanvas() {
   };
   canvas.addEventListener('pointerdown', event => {
     event.preventDefault();
+    if (!drawingContext) resize({ preserve: true });
     drawingPointerId = event.pointerId;
     canvas.setPointerCapture?.(event.pointerId);
     const p = point(event);
@@ -1678,13 +1688,18 @@ function setupDrawingCanvas() {
   window.addEventListener('resize', () => window.setTimeout(() => resize({ preserve: true }), 120));
 }
 function setDrawingFullscreen(open) {
-  document.body.classList.toggle('drawing-fullscreen', Boolean(open));
+  const wantsOpen = Boolean(open);
+  if (wantsOpen && $('#posterComposer')?.hidden) setPosterComposerOpen(true);
+  document.documentElement.classList.toggle('drawing-fullscreen', wantsOpen);
+  document.body.classList.toggle('drawing-fullscreen', wantsOpen);
   const button = $('#expandDrawingBtn');
   if (button) {
-    button.textContent = open ? 'Exit full-screen' : 'Full-screen draw';
-    button.setAttribute('aria-pressed', String(Boolean(open)));
+    button.textContent = wantsOpen ? 'Exit full-screen' : 'Full-screen draw';
+    button.setAttribute('aria-pressed', String(wantsOpen));
   }
+  if (wantsOpen) window.scrollTo({ top: 0, behavior: 'instant' });
   window.setTimeout(() => drawingResizeCanvas?.({ preserve: true }), 80);
+  window.setTimeout(() => drawingResizeCanvas?.({ preserve: true }), 320);
 }
 function toggleDrawingFullscreen() {
   setDrawingFullscreen(!document.body.classList.contains('drawing-fullscreen'));
@@ -1718,7 +1733,8 @@ async function deletePosterPost(postId, imagePath = '') {
   }
   const ok = confirm('Delete this Poster Board post?');
   if (!ok) return;
-  const button = document.querySelector(`[data-delete-poster-id="${CSS.escape(postId)}"]`);
+  const safeSelector = String(postId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const button = document.querySelector(`[data-delete-poster-id="${safeSelector}"]`);
   const card = button?.closest('.poster-post');
   try {
     if (button) {
@@ -1732,7 +1748,8 @@ async function deletePosterPost(postId, imagePath = '') {
       throw new Error('Delete did not go through. Run the updated supabase-setup.sql in Supabase so DELETE is allowed.');
     }
     if (imagePath) {
-      await client.storage.from(POSTER_BUCKET).remove([imagePath]);
+      const { error: storageError } = await client.storage.from(POSTER_BUCKET).remove([imagePath]);
+      if (storageError) console.warn('Image delete skipped:', storageError.message);
     }
     card?.remove();
     posterSeenIds.delete(postId);
@@ -1772,8 +1789,8 @@ function initPosterBoard() {
   setupDrawingCanvas();
   showPosterSetupNotice();
   if (hasPosterConfig()) {
-    loadPosterPosts();
-    subscribePosterRealtime();
+    loadPosterPosts().catch(error => setPosterStatus(error.message || 'Poster Board could not load.', true));
+    try { subscribePosterRealtime(); } catch (error) { console.warn('Poster realtime failed:', error); }
   }
 }
 
@@ -1810,8 +1827,15 @@ function attachEvents() {
   onIf('#postMessageBtn', 'click', postPosterMessage);
   onIf('#postPhotoBtn', 'click', postPosterPhoto);
   onIf('#postDrawingBtn', 'click', postPosterDrawing);
-  onIf('#expandDrawingBtn', 'click', toggleDrawingFullscreen);
+  let suppressExpandClickUntil = 0;
   document.addEventListener('click', event => {
+    const expandButton = event.target.closest('#expandDrawingBtn');
+    if (expandButton) {
+      event.preventDefault();
+      if (Date.now() < suppressExpandClickUntil) return;
+      toggleDrawingFullscreen();
+      return;
+    }
     const tempButton = event.target.closest('[data-temp-toggle]');
     if (tempButton) toggleWeatherUnit(tempButton.dataset.tempToggle);
     const calmButton = event.target.closest('[data-calm-call-alert]');
@@ -1829,20 +1853,27 @@ function attachEvents() {
       deletePosterPost(deleteButton.dataset.deletePosterId, deleteButton.dataset.deleteImagePath || '');
     }
   });
+  document.addEventListener('touchstart', event => {
+    const expandButton = event.target.closest?.('#expandDrawingBtn');
+    if (!expandButton) return;
+    event.preventDefault();
+    suppressExpandClickUntil = Date.now() + 650;
+    toggleDrawingFullscreen();
+  }, { passive: false });
   setInterval(() => { renderTimes(); renderCallWindows(); }, 1000);
 }
 
 async function init() {
-  markStandaloneDisplayMode();
-  initBottomTabs();
-  attachEvents();
-  initDialogBackdropClose();
-  initPosterBoard();
-  convertFromF();
-  renderSettings();
-  renderFxNote();
-  renderAllStatic();
-  await refreshAll();
+  try { markStandaloneDisplayMode(); } catch (err) { console.warn(err); }
+  try { initBottomTabs(); } catch (err) { console.warn('Tabs failed:', err); }
+  try { attachEvents(); } catch (err) { console.warn('Events failed:', err); }
+  try { initDialogBackdropClose(); } catch (err) { console.warn(err); }
+  try { initPosterBoard(); } catch (err) { console.warn('Poster Board init failed:', err); }
+  try { convertFromF(); } catch (err) { console.warn(err); }
+  try { renderSettings(); } catch (err) { console.warn(err); }
+  try { renderFxNote(); } catch (err) { console.warn(err); }
+  try { renderAllStatic(); } catch (err) { console.warn('Initial render failed:', err); }
+  await refreshAll().catch(err => console.warn('Initial refresh failed:', err));
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
-init();
+init().catch(error => console.warn('App startup failed:', error));

@@ -120,9 +120,7 @@ v40 notes: bottom navigation is forced to 5 side-by-side buttons on desktop and 
 Version 42 update: Poster Board composer is collapsed by default behind a + Post button; posts now appear below the button with newest first.
 
 
-v43 notes: Removed the Daily connection cue from Extras, added a full-screen drawing mode for phones, improved drawing resize preservation, and made Poster Board deletion verify that Supabase actually deleted the row. Re-run `supabase-setup.sql` in Supabase for the explicit DELETE grant/policy.
-
-
-## v44
-- Fixed Weather and Vacation Helper rendering after removing the Extras Daily connection cue.
-- Updated service-worker cache to v44.
+## v45 notes
+- Rebuilt from the last known-good automated build so weather, holidays/trip ideas, and USD/AUD loading are isolated from Poster Board errors.
+- Full-screen drawing now uses a stronger fixed overlay style and click/touch fallback for iPhone Home Screen mode.
+- Daily connection cue remains removed.
