@@ -169,3 +169,9 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - New/unread markers stay stable until clicked or until leaving Poster Board.
 - iPhone Home Screen icon badging is not included; the app keeps the in-app Poster Board tab badge.
 - Run supabase-setup.sql again for the new reply media columns and reaction permissions.
+
+
+## v55
+- Poster Board realtime updates now keep the visible post order static. New activity updates the Poster Board badge only until you click the Poster Board tab or use Refresh live data.
+- Reactions/replies no longer yank the post to the top for the current user.
+- Leaving Poster Board marks only the posts currently visible as seen; unseen queued activity stays badged until refreshed/viewed.

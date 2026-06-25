@@ -1026,6 +1026,7 @@ async function refreshAll() {
   });
   try { renderAllStatic(); } catch (err) { console.warn('Static render failed:', err); }
   try { renderTripResults(); } catch (err) { console.warn('Trip render failed:', err); }
+  try { await loadPosterPosts({ silent: true, preserveScroll: document.body.dataset.activeTab === 'poster' }); } catch (err) { console.warn('Poster refresh failed:', err); }
   if (button) {
     button.disabled = false;
     button.textContent = 'Refresh live data';
@@ -1260,8 +1261,12 @@ function initBottomTabs() {
 
   const activateButton = (button, options = {}) => {
     if (!button) return;
-    setActiveAppTab(button.dataset.appTab, { scroll: options.scroll !== false, instant: Boolean(options.instant) });
+    const targetTab = button.dataset.appTab;
+    setActiveAppTab(targetTab, { scroll: options.scroll !== false, instant: Boolean(options.instant) });
     updateTabIndicator(tabbar, button, { dragging: Boolean(options.dragging) });
+    if (targetTab === 'poster' && !options.dragging) {
+      loadPosterPosts({ silent: true, preserveScroll: false }).catch(err => console.warn('Poster Board refresh failed:', err));
+    }
   };
 
   setActiveAppTab(hashMap[hashTab] || 'time', { instant: true, scroll: false });
@@ -1420,6 +1425,7 @@ let posterClient = null;
 let posterChannel = null;
 let posterSeenIds = new Set();
 let posterPosts = [];
+let posterNotificationPosts = [];
 let posterUnreadClearTimer = null;
 let posterCurrentAuthor = null;
 let drawingContext = null;
@@ -1496,14 +1502,17 @@ function loadPosterLastSeenMs() {
 function savePosterLastSeenMs(ms) {
   if (Number.isFinite(ms) && ms > 0) localStorage.setItem(POSTER_LAST_SEEN_KEY, String(ms));
 }
-function newestPosterActivityMs() {
-  return Math.max(0, ...posterPosts.map(postActivityMs));
+function posterNotificationSource() {
+  return posterNotificationPosts.length ? posterNotificationPosts : posterPosts;
+}
+function newestPosterActivityMs(source = posterNotificationSource()) {
+  return Math.max(0, ...source.map(postActivityMs));
 }
 function isPosterUnread(post) {
   return postActivityMs(post) > loadPosterLastSeenMs() && latestActivityAuthor(post) !== posterAuthor();
 }
 function posterUnreadCount() {
-  return posterPosts.filter(isPosterUnread).length;
+  return posterNotificationSource().filter(isPosterUnread).length;
 }
 function updatePosterUnreadUi() {
   const button = document.querySelector('[data-app-tab="poster"]');
@@ -1513,10 +1522,13 @@ function updatePosterUnreadUi() {
   if (count > 0) button.setAttribute('data-unread-count', String(Math.min(count, 9)));
   else button.removeAttribute('data-unread-count');
 }
-function markAllPosterActivitySeen() {
-  const newest = newestPosterActivityMs();
+function markAllPosterActivitySeen(source = posterNotificationSource()) {
+  const newest = newestPosterActivityMs(source);
   if (newest && newest > loadPosterLastSeenMs()) savePosterLastSeenMs(newest);
   updatePosterUnreadUi();
+}
+function markVisiblePosterActivitySeen() {
+  markAllPosterActivitySeen(posterPosts);
 }
 function markPosterSeenSoon() {
   // v54: no automatic timer. New markers remain until clicked, or until leaving Poster Board.
@@ -1526,7 +1538,7 @@ let posterWasActive = false;
 function handlePosterTabVisibility(tab) {
   const nowPoster = tab === 'poster';
   if (posterWasActive && !nowPoster) {
-    markAllPosterActivitySeen();
+    markVisiblePosterActivitySeen();
     renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: true });
   }
   posterWasActive = nowPoster;
@@ -1538,6 +1550,43 @@ function normalizePosterRows(rows = []) {
     poster_replies: Array.isArray(post.poster_replies) ? post.poster_replies.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : [],
     poster_reactions: Array.isArray(post.poster_reactions) ? post.poster_reactions.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : []
   })).sort((a, b) => postActivityMs(b) - postActivityMs(a));
+}
+function mergePosterRowsKeepingCurrentOrder(freshRows = [], currentRows = posterPosts) {
+  const byId = new Map(freshRows.map(post => [post.id, post]));
+  const kept = currentRows.map(post => byId.get(post.id)).filter(Boolean);
+  const knownIds = new Set(kept.map(post => post.id));
+  const newItems = freshRows.filter(post => !knownIds.has(post.id));
+  return [...kept, ...newItems];
+}
+async function fetchPosterRowsForNotifications() {
+  const client = getPosterClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from('poster_posts')
+    .select('*, poster_replies(*), poster_reactions(*)')
+    .order('last_activity_at', { ascending: false, nullsFirst: false })
+    .limit(60);
+  if (error) throw error;
+  return normalizePosterRows(data || []);
+}
+async function refreshPosterBadgeOnly() {
+  try {
+    posterNotificationPosts = await fetchPosterRowsForNotifications();
+    updatePosterUnreadUi();
+  } catch (error) {
+    console.warn('Poster badge refresh failed:', error);
+  }
+}
+async function refreshPosterInPlace(options = {}) {
+  try {
+    const fresh = await fetchPosterRowsForNotifications();
+    posterNotificationPosts = fresh;
+    posterPosts = mergePosterRowsKeepingCurrentOrder(fresh, posterPosts);
+    if (options.markSeen) markAllPosterActivitySeen();
+    renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: options.preserveScroll !== false });
+  } catch (error) {
+    setPosterStatus(error.message || 'Poster Board could not refresh.', true);
+  }
 }
 function groupedReactions(post) {
   return (post.poster_reactions || []).reduce((groups, reaction) => {
@@ -1613,7 +1662,7 @@ function renderPosterFeed(posts = posterPosts, options = {}) {
 }
 function addPosterPostToTop(post) {
   if (!post?.id || posterSeenIds.has(post.id)) return;
-  loadPosterPosts({ preserveScroll: document.body.dataset.activeTab === 'poster' });
+  refreshPosterBadgeOnly();
 }
 async function loadPosterPosts(options = {}) {
   showPosterSetupNotice();
@@ -1631,6 +1680,7 @@ async function loadPosterPosts(options = {}) {
     return;
   }
   posterPosts = normalizePosterRows(data || []);
+  posterNotificationPosts = posterPosts;
   if (options.markSeen) markAllPosterActivitySeen();
   renderPosterFeed(posterPosts, { keepSeenState: true, preserveScroll: options.preserveScroll });
   if (Number.isFinite(scrollY)) window.setTimeout(() => window.scrollTo({ top: scrollY, behavior: 'auto' }), 0);
@@ -1639,12 +1689,12 @@ async function loadPosterPosts(options = {}) {
 function subscribePosterRealtime() {
   const client = getPosterClient();
   if (!client || posterChannel) return;
-  const refresh = () => loadPosterPosts({ silent: true, preserveScroll: document.body.dataset.activeTab === 'poster' });
+  const refreshBadge = () => refreshPosterBadgeOnly();
   posterChannel = client
     .channel('poster-board')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_posts' }, refresh)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_replies' }, refresh)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_reactions' }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_posts' }, refreshBadge)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_replies' }, refreshBadge)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_reactions' }, refreshBadge)
     .subscribe();
 }
 function loadPosterAuthor() {
@@ -1944,7 +1994,7 @@ async function togglePosterReaction(postId, emoji) {
       const { error } = await client.from('poster_reactions').insert({ post_id: postId, author, emoji });
       if (error) throw error;
     }
-    await loadPosterPosts({ markSeen: true, preserveScroll: true });
+    await refreshPosterInPlace({ markSeen: true, preserveScroll: true });
     setPosterStatus('');
   } catch (error) {
     setPosterStatus(error.message || 'Reaction failed. Run the updated supabase-setup.sql and try again.', true);
@@ -2005,7 +2055,7 @@ async function submitPosterReply(form, options = {}) {
     const fileInput = form.querySelector('[data-reply-file]');
     if (fileInput) fileInput.value = '';
     setReplyFormOpen(postId, false);
-    await loadPosterPosts({ markSeen: true, preserveScroll: true });
+    await refreshPosterInPlace({ markSeen: true, preserveScroll: true });
     setPosterStatus('Reply posted!');
   } catch (error) {
     setPosterStatus(error.message || 'Reply failed. Run the updated supabase-setup.sql and try again.', true);
@@ -2030,7 +2080,7 @@ async function deletePosterReply(replyId, imagePath = '') {
       const { error: storageError } = await client.storage.from(POSTER_BUCKET).remove([imagePath]);
       if (storageError) console.warn('Reply media delete skipped:', storageError.message);
     }
-    await loadPosterPosts({ markSeen: true, preserveScroll: true });
+    await refreshPosterInPlace({ markSeen: true, preserveScroll: true });
     setPosterStatus('Reply deleted.');
   } catch (error) {
     if (button) {
@@ -2068,10 +2118,12 @@ async function deletePosterPost(postId, imagePath = '') {
       const { error: storageError } = await client.storage.from(POSTER_BUCKET).remove(pathsToRemove);
       if (storageError) console.warn('Media delete skipped:', storageError.message);
     }
+    posterPosts = posterPosts.filter(item => item.id !== postId);
+    posterNotificationPosts = posterNotificationPosts.filter(item => item.id !== postId);
     card?.remove();
     posterSeenIds.delete(postId);
+    updatePosterUnreadUi();
     setPosterStatus('Deleted.');
-    await loadPosterPosts({ markSeen: true, preserveScroll: true });
   } catch (error) {
     if (button) {
       button.disabled = false;
