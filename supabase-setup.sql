@@ -202,3 +202,43 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+-- v57 clean: reactions on replies
+create table if not exists public.poster_reply_reactions (
+  id uuid primary key default gen_random_uuid(),
+  reply_id uuid not null references public.poster_replies(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  author text not null check (author in ('Taylor', 'Ellana')),
+  emoji text not null check (emoji in ('❤️', '😂', '🥺', '🔥', '👍', '💀', '😡')),
+  unique (reply_id, author, emoji)
+);
+
+alter table public.poster_reply_reactions enable row level security;
+grant select, insert, delete on table public.poster_reply_reactions to anon, authenticated;
+
+drop policy if exists "Poster reply reactions are readable" on public.poster_reply_reactions;
+create policy "Poster reply reactions are readable"
+on public.poster_reply_reactions
+for select
+using (true);
+
+drop policy if exists "Poster reply reactions can be added" on public.poster_reply_reactions;
+create policy "Poster reply reactions can be added"
+on public.poster_reply_reactions
+for insert
+with check (author in ('Taylor', 'Ellana'));
+
+drop policy if exists "Poster reply reactions can be deleted" on public.poster_reply_reactions;
+create policy "Poster reply reactions can be deleted"
+on public.poster_reply_reactions
+for delete
+using (true);
+
+alter table public.poster_reply_reactions replica identity full;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.poster_reply_reactions;
+exception
+  when duplicate_object then null;
+end $$;

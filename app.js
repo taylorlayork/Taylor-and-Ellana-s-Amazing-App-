@@ -42,7 +42,7 @@ function calmCallAlert(window) {
 function shouldFlashCallAlert(window, overlapNow) {
   if (!window || !overlapNow) return false;
   if (isCallAlertCalmed(window)) return false;
-  return Date.now() - window.start.getTime() < 45000;
+  return Date.now() - window.start.getTime() < 2000;
 }
 function callNowBannerHtml(window, shouldFlash) {
   const attrs = shouldFlash ? ' data-calm-call-alert="1"' : '';
@@ -1250,6 +1250,29 @@ function markStandaloneDisplayMode() {
   document.body.classList.toggle('is-standalone-app', standalone);
 }
 
+
+function initStandaloneNavAutoHide(tabbar) {
+  if (!tabbar || tabbar.dataset.autoHideReady) return;
+  tabbar.dataset.autoHideReady = '1';
+  let lastY = window.scrollY || 0;
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY || 0;
+      const diff = y - lastY;
+      if (Math.abs(diff) > 7) {
+        const shouldHide = diff > 0 && y > 80;
+        document.body.classList.toggle('nav-hidden-on-scroll', shouldHide);
+        document.body.classList.toggle('nav-visible-on-scroll', !shouldHide);
+        lastY = y;
+      }
+      if (y < 8) document.body.classList.remove('nav-hidden-on-scroll');
+      ticking = false;
+    });
+  }, { passive: true });
+}
 function initBottomTabs() {
   const tabbar = $('#bottomTabbar');
   if (!tabbar) return;
@@ -1415,6 +1438,7 @@ function initBottomTabs() {
     markStandaloneDisplayMode();
     updateTabIndicator(tabbar, document.querySelector('.tab-slab.active'), { dragging: false });
   });
+  initStandaloneNavAutoHide(tabbar);
 }
 
 
@@ -1435,6 +1459,8 @@ let drawingResizeCanvas = null;
 let drawingOriginalParent = null;
 let drawingOriginalNextSibling = null;
 let drawingScrollY = 0;
+let replyDrawingScrollY = 0;
+const replyCanvasState = new WeakMap();
 
 function posterConfig() {
   return window.ACROSS_SUPABASE_CONFIG || {};
@@ -1547,7 +1573,7 @@ function handlePosterTabVisibility(tab) {
 function normalizePosterRows(rows = []) {
   return rows.map(post => ({
     ...post,
-    poster_replies: Array.isArray(post.poster_replies) ? post.poster_replies.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : [],
+    poster_replies: Array.isArray(post.poster_replies) ? post.poster_replies.map(reply => ({ ...reply, poster_reply_reactions: Array.isArray(reply.poster_reply_reactions) ? reply.poster_reply_reactions.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : [] })).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : [],
     poster_reactions: Array.isArray(post.poster_reactions) ? post.poster_reactions.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : []
   })).sort((a, b) => postActivityMs(b) - postActivityMs(a));
 }
@@ -1563,7 +1589,7 @@ async function fetchPosterRowsForNotifications() {
   if (!client) return [];
   const { data, error } = await client
     .from('poster_posts')
-    .select('*, poster_replies(*), poster_reactions(*)')
+    .select('*, poster_replies(*, poster_reply_reactions(*)), poster_reactions(*)')
     .order('last_activity_at', { ascending: false, nullsFirst: false })
     .limit(60);
   if (error) throw error;
@@ -1611,6 +1637,37 @@ function reactionControlsHtml(post) {
   const summaries = Object.entries(groups).filter(([, authors]) => authors.length).map(([emoji, authors]) => `<span class="poster-reaction-summary"><strong>${escapeHtml(emoji)}</strong> ${escapeHtml(authors.join(', '))}</span>`).join('');
   return `<div class="poster-reactions"><div class="poster-reaction-buttons">${buttons}</div>${summaries ? `<div class="poster-reaction-summary-row">${summaries}</div>` : ''}</div>`;
 }
+
+function groupedReplyReactions(reply) {
+  return (reply.poster_reply_reactions || []).reduce((groups, reaction) => {
+    if (!reaction?.emoji) return groups;
+    if (!groups[reaction.emoji]) groups[reaction.emoji] = [];
+    if (reaction.author && !groups[reaction.emoji].includes(reaction.author)) groups[reaction.emoji].push(reaction.author);
+    return groups;
+  }, {});
+}
+function hasReplyReaction(reply, emoji, author = posterAuthor()) {
+  return (reply.poster_reply_reactions || []).some(reaction => reaction.emoji === emoji && reaction.author === author);
+}
+function replyReactionControlsHtml(reply) {
+  const emojis = ['❤️', '😂', '🥺', '🔥', '👍', '💀', '😡'];
+  const groups = groupedReplyReactions(reply);
+  const buttons = emojis.map(emoji => {
+    const authors = groups[emoji] || [];
+    const active = hasReplyReaction(reply, emoji);
+    const title = authors.length ? `${emoji} ${authors.join(', ')}` : `${emoji} react to reply`;
+    return `<button type="button" class="poster-react-button poster-reply-react-button ${active ? 'active' : ''}" data-react-reply-id="${escapeHtml(reply.id)}" data-react-emoji="${escapeHtml(emoji)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span>${emoji}</span>${authors.length ? `<em>${authors.length}</em>` : ''}</button>`;
+  }).join('');
+  const summaries = Object.entries(groups).filter(([, authors]) => authors.length).map(([emoji, authors]) => `<span class="poster-reaction-summary"><strong>${escapeHtml(emoji)}</strong> ${escapeHtml(authors.join(', '))}</span>`).join('');
+  return `<div class="poster-reactions poster-reply-reactions"><div class="poster-reaction-buttons">${buttons}</div>${summaries ? `<div class="poster-reaction-summary-row">${summaries}</div>` : ''}</div>`;
+}
+function findReplyById(replyId) {
+  for (const post of posterPosts) {
+    const reply = (post.poster_replies || []).find(item => item.id === replyId);
+    if (reply) return reply;
+  }
+  return null;
+}
 function replyMediaHtml(reply) {
   const url = posterImageUrl(reply.image_path);
   if (!url) return '';
@@ -1624,10 +1681,10 @@ function repliesHtml(post) {
         const body = reply.body ? `<p>${escapeHtml(reply.body)}</p>` : '';
         const media = replyMediaHtml(reply);
         const deleteButton = reply.id ? `<button type="button" class="poster-reply-delete" data-delete-reply-id="${escapeHtml(reply.id)}" data-delete-reply-image-path="${escapeHtml(reply.image_path || '')}">Delete</button>` : '';
-        return `<div class="poster-reply"><div class="poster-reply-head"><strong>${escapeHtml(reply.author || 'Someone')}</strong><span>${escapeHtml(reply.created_at ? new Date(reply.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')}</span>${deleteButton}</div>${media}${body}</div>`;
+        return `<div class="poster-reply" data-poster-reply-id="${escapeHtml(reply.id || '')}"><div class="poster-reply-head"><div class="poster-reply-meta"><strong>${escapeHtml(reply.author || 'Someone')}</strong><span>${escapeHtml(reply.created_at ? new Date(reply.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')}</span></div>${deleteButton}</div>${media}${body}${replyReactionControlsHtml(reply)}</div>`;
       }).join('')}</div>`
     : '';
-  return `<div class="poster-replies">${list}<button type="button" class="poster-reply-toggle" data-reply-toggle="${escapeHtml(post.id)}">Reply</button><form class="poster-reply-form" data-reply-form="${escapeHtml(post.id)}" hidden><textarea rows="2" placeholder="Write a reply…"></textarea><label class="poster-reply-file">Photo / GIF<input type="file" accept="image/*,.gif,image/gif" data-reply-file /></label><div><button type="button" class="secondary" data-reply-cancel="${escapeHtml(post.id)}">Cancel</button><button type="button" class="secondary" data-reply-drawing="${escapeHtml(post.id)}">Use current drawing</button><button type="submit">Post reply</button></div></form></div>`;
+  return `<div class="poster-replies">${list}<button type="button" class="poster-reply-toggle" data-reply-toggle="${escapeHtml(post.id)}">Reply</button><form class="poster-reply-form" data-reply-form="${escapeHtml(post.id)}" hidden><textarea rows="2" placeholder="Write a reply…"></textarea><div class="reply-extra-row"><button type="button" class="secondary poster-reply-attach-toggle" data-reply-file-toggle="${escapeHtml(post.id)}">+ Photo / GIF</button><button type="button" class="secondary poster-reply-drawing-toggle" data-reply-drawing-toggle="${escapeHtml(post.id)}">+ Draw reply</button></div><label class="poster-reply-file" data-reply-file-wrap hidden>Photo / GIF<input type="file" accept="image/*,.gif,image/gif" data-reply-file /></label><div class="reply-drawing-panel" data-reply-drawing-panel hidden><canvas class="reply-drawing-canvas" data-reply-canvas aria-label="Reply drawing canvas"></canvas><div class="reply-drawing-actions"><button type="button" class="secondary" data-reply-drawing-fullscreen="${escapeHtml(post.id)}">Full-screen draw</button><button type="button" class="secondary" data-reply-drawing-clear="${escapeHtml(post.id)}">Clear drawing</button></div></div><div><button type="button" class="secondary" data-reply-cancel="${escapeHtml(post.id)}">Cancel</button><button type="submit">Post reply</button></div></form></div>`;
 }
 function posterPostHtml(post, options = {}) {
   const safeAuthor = escapeHtml(post.author || 'Someone');
@@ -1672,7 +1729,7 @@ async function loadPosterPosts(options = {}) {
   const scrollY = options.preserveScroll ? window.scrollY : null;
   const { data, error } = await client
     .from('poster_posts')
-    .select('*, poster_replies(*), poster_reactions(*)')
+    .select('*, poster_replies(*, poster_reply_reactions(*)), poster_reactions(*)')
     .order('last_activity_at', { ascending: false, nullsFirst: false })
     .limit(60);
   if (error) {
@@ -1695,6 +1752,7 @@ function subscribePosterRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_posts' }, refreshBadge)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_replies' }, refreshBadge)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_reactions' }, refreshBadge)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'poster_reply_reactions' }, refreshBadge)
     .subscribe();
 }
 function loadPosterAuthor() {
@@ -2000,6 +2058,38 @@ async function togglePosterReaction(postId, emoji) {
     setPosterStatus(error.message || 'Reaction failed. Run the updated supabase-setup.sql and try again.', true);
   }
 }
+
+async function toggleReplyReaction(replyId, emoji) {
+  const client = getPosterClient();
+  if (!client || !replyId || !emoji) return;
+  const author = posterAuthor();
+  const reply = findReplyById(replyId);
+  const existing = (reply?.poster_reply_reactions || []).find(reaction => reaction.emoji === emoji && reaction.author === author);
+  try {
+    if (existing) {
+      setPosterStatus('Removing reply reaction…');
+      const { error } = await client.from('poster_reply_reactions').delete().eq('id', existing.id);
+      if (error) throw error;
+      if (reply) reply.poster_reply_reactions = (reply.poster_reply_reactions || []).filter(reaction => reaction.id !== existing.id);
+    } else {
+      setPosterStatus('Adding reply reaction…');
+      const { data, error } = await client.from('poster_reply_reactions').insert({ reply_id: replyId, author, emoji }).select('*').single();
+      if (error) throw error;
+      if (reply) {
+        if (!Array.isArray(reply.poster_reply_reactions)) reply.poster_reply_reactions = [];
+        reply.poster_reply_reactions.push(data || { reply_id: replyId, author, emoji, created_at: new Date().toISOString(), id: String(Date.now()) });
+      }
+    }
+    if (reply) {
+      const wrap = document.querySelector(`[data-poster-reply-id="${safeCss(replyId)}"] .poster-reply-reactions`);
+      if (wrap) wrap.outerHTML = replyReactionControlsHtml(reply);
+    }
+    setPosterStatus('');
+    refreshPosterBadgeOnly();
+  } catch (error) {
+    setPosterStatus(error.message || 'Reply reaction failed. Run the updated supabase-setup.sql and try again.', true);
+  }
+}
 function safeCss(value) {
   return window.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/"/g, '\\"');
 }
@@ -2014,11 +2104,119 @@ function setReplyFormOpen(postId, open) {
 function fileIsGif(file) {
   return Boolean(file && (file.type === 'image/gif' || /\.gif$/i.test(file.name || '')));
 }
-async function uploadReplyMedia(form, useCurrentDrawing = false) {
-  if (useCurrentDrawing) {
-    const canvas = $('#drawingCanvas');
-    if (!canvas || !drawingHasInk) throw new Error('Draw something in the drawing pad first, then use it as a reply.');
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+
+function setupReplyCanvas(canvas) {
+  if (!canvas || replyCanvasState.has(canvas)) return;
+  const state = { ctx: null, pointerId: null, hasInk: false };
+  const resize = (options = {}) => {
+    const preserve = options.preserve !== false && state.hasInk && canvas.width && canvas.height;
+    const oldCanvas = preserve ? document.createElement('canvas') : null;
+    if (oldCanvas) {
+      oldCanvas.width = canvas.width;
+      oldCanvas.height = canvas.height;
+      oldCanvas.getContext('2d').drawImage(canvas, 0, 0);
+    }
+    const rect = canvas.getBoundingClientRect();
+    const cssWidth = Math.max(280, Math.round(rect.width || canvas.clientWidth || 600));
+    const cssHeight = Math.max(210, Math.round(rect.height || canvas.clientHeight || 260));
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    state.ctx = canvas.getContext('2d');
+    if (!state.ctx) return;
+    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    state.ctx.fillStyle = '#fffafc';
+    state.ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (oldCanvas) state.ctx.drawImage(oldCanvas, 0, 0, canvas.width, canvas.height);
+    state.ctx.lineCap = 'round';
+    state.ctx.lineJoin = 'round';
+    state.ctx.lineWidth = Math.max(5, 7 * dpr);
+    state.ctx.strokeStyle = '#ec4899';
+    if (!oldCanvas) state.hasInk = false;
+    canvas.dataset.hasInk = state.hasInk ? '1' : '0';
+  };
+  state.resize = resize;
+  replyCanvasState.set(canvas, state);
+  const point = event => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) * (canvas.width / Math.max(1, rect.width)), y: (event.clientY - rect.top) * (canvas.height / Math.max(1, rect.height)) };
+  };
+  canvas.addEventListener('pointerdown', event => {
+    event.preventDefault();
+    if (!state.ctx) resize({ preserve: true });
+    state.pointerId = event.pointerId;
+    canvas.setPointerCapture?.(event.pointerId);
+    const p = point(event);
+    state.ctx.beginPath();
+    state.ctx.moveTo(p.x, p.y);
+    state.ctx.lineTo(p.x + 0.01, p.y + 0.01);
+    state.ctx.stroke();
+    state.hasInk = true;
+    canvas.dataset.hasInk = '1';
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (state.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const p = point(event);
+    state.ctx.lineTo(p.x, p.y);
+    state.ctx.stroke();
+    state.hasInk = true;
+    canvas.dataset.hasInk = '1';
+  });
+  const stop = event => {
+    if (state.pointerId !== null && event?.pointerId !== undefined && state.pointerId !== event.pointerId) return;
+    state.pointerId = null;
+  };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+  canvas.addEventListener('lostpointercapture', stop);
+  resize({ preserve: false });
+}
+function getReplyForm(postId) {
+  return document.querySelector(`[data-reply-form="${safeCss(postId)}"]`);
+}
+function setReplyDrawingOpen(postId, open = true) {
+  const form = getReplyForm(postId);
+  if (!form) return;
+  const panel = form.querySelector('[data-reply-drawing-panel]');
+  const canvas = form.querySelector('[data-reply-canvas]');
+  if (!panel || !canvas) return;
+  panel.hidden = !open;
+  if (open) {
+    setupReplyCanvas(canvas);
+    window.setTimeout(() => replyCanvasState.get(canvas)?.resize?.({ preserve: true }), 50);
+  }
+}
+function setReplyDrawingFullscreen(postId, open) {
+  const form = getReplyForm(postId);
+  if (!form) return;
+  const panel = form.querySelector('[data-reply-drawing-panel]');
+  const canvas = form.querySelector('[data-reply-canvas]');
+  const button = form.querySelector('[data-reply-drawing-fullscreen]');
+  if (!panel || !canvas) return;
+  setReplyDrawingOpen(postId, true);
+  const wantsOpen = Boolean(open);
+  if (wantsOpen) replyDrawingScrollY = window.scrollY || 0;
+  panel.classList.toggle('is-fullscreen', wantsOpen);
+  document.body.classList.toggle('reply-drawing-fullscreen-open', wantsOpen);
+  if (button) button.textContent = wantsOpen ? 'Done full-screen' : 'Full-screen draw';
+  window.setTimeout(() => replyCanvasState.get(canvas)?.resize?.({ preserve: true }), 50);
+  if (!wantsOpen && Number.isFinite(replyDrawingScrollY)) window.setTimeout(() => window.scrollTo(0, replyDrawingScrollY), 0);
+}
+function clearReplyDrawing(postId) {
+  const form = getReplyForm(postId);
+  const canvas = form?.querySelector('[data-reply-canvas]');
+  if (!canvas) return;
+  setupReplyCanvas(canvas);
+  const state = replyCanvasState.get(canvas);
+  state.hasInk = false;
+  canvas.dataset.hasInk = '0';
+  state.resize?.({ preserve: false });
+}
+async function uploadReplyMedia(form) {
+  const replyCanvas = form.querySelector('[data-reply-canvas]');
+  if (replyCanvas?.dataset.hasInk === '1') {
+    const blob = await new Promise(resolve => replyCanvas.toBlob(resolve, 'image/png'));
     const image_path = await uploadPosterBlob(blob, 'drawing', 'reply-drawing.png');
     return { kind: 'drawing', image_path };
   }
@@ -2037,7 +2235,7 @@ async function submitPosterReply(form, options = {}) {
   const textarea = form.querySelector('textarea');
   const body = textarea?.value.trim();
   try {
-    const media = await uploadReplyMedia(form, Boolean(options.useCurrentDrawing));
+    const media = await uploadReplyMedia(form);
     if (!postId || (!body && !media.image_path)) {
       setPosterStatus('Write a reply or attach a photo/GIF/drawing first.', true);
       return;
@@ -2054,6 +2252,11 @@ async function submitPosterReply(form, options = {}) {
     textarea.value = '';
     const fileInput = form.querySelector('[data-reply-file]');
     if (fileInput) fileInput.value = '';
+    clearReplyDrawing(postId);
+    setReplyDrawingOpen(postId, false);
+    setReplyDrawingFullscreen(postId, false);
+    const fileWrap = form.querySelector('[data-reply-file-wrap]');
+    if (fileWrap) fileWrap.hidden = true;
     setReplyFormOpen(postId, false);
     await refreshPosterInPlace({ markSeen: true, preserveScroll: true });
     setPosterStatus('Reply posted!');
@@ -2233,6 +2436,12 @@ function attachEvents() {
       togglePosterReaction(reactButton.dataset.reactPosterId, reactButton.dataset.reactEmoji);
       return;
     }
+    const replyReactButton = event.target.closest('[data-react-reply-id]');
+    if (replyReactButton) {
+      event.preventDefault();
+      toggleReplyReaction(replyReactButton.dataset.reactReplyId, replyReactButton.dataset.reactEmoji);
+      return;
+    }
     const replyToggle = event.target.closest('[data-reply-toggle]');
     if (replyToggle) {
       event.preventDefault();
@@ -2244,14 +2453,39 @@ function attachEvents() {
     const replyCancel = event.target.closest('[data-reply-cancel]');
     if (replyCancel) {
       event.preventDefault();
+      setReplyDrawingFullscreen(replyCancel.dataset.replyCancel, false);
+      setReplyDrawingOpen(replyCancel.dataset.replyCancel, false);
       setReplyFormOpen(replyCancel.dataset.replyCancel, false);
       return;
     }
-    const replyDrawingButton = event.target.closest('[data-reply-drawing]');
-    if (replyDrawingButton) {
+    const fileToggle = event.target.closest('[data-reply-file-toggle]');
+    if (fileToggle) {
       event.preventDefault();
-      const form = document.querySelector(`[data-reply-form="${safeCss(replyDrawingButton.dataset.replyDrawing)}"]`);
-      submitPosterReply(form, { useCurrentDrawing: true });
+      const form = getReplyForm(fileToggle.dataset.replyFileToggle);
+      const wrap = form?.querySelector('[data-reply-file-wrap]');
+      if (wrap) wrap.hidden = !wrap.hidden;
+      return;
+    }
+    const replyDrawingToggle = event.target.closest('[data-reply-drawing-toggle]');
+    if (replyDrawingToggle) {
+      event.preventDefault();
+      const form = getReplyForm(replyDrawingToggle.dataset.replyDrawingToggle);
+      const panel = form?.querySelector('[data-reply-drawing-panel]');
+      setReplyDrawingOpen(replyDrawingToggle.dataset.replyDrawingToggle, Boolean(panel?.hidden));
+      return;
+    }
+    const replyDrawingFullscreenButton = event.target.closest('[data-reply-drawing-fullscreen]');
+    if (replyDrawingFullscreenButton) {
+      event.preventDefault();
+      const form = getReplyForm(replyDrawingFullscreenButton.dataset.replyDrawingFullscreen);
+      const panel = form?.querySelector('[data-reply-drawing-panel]');
+      setReplyDrawingFullscreen(replyDrawingFullscreenButton.dataset.replyDrawingFullscreen, !panel?.classList.contains('is-fullscreen'));
+      return;
+    }
+    const replyDrawingClear = event.target.closest('[data-reply-drawing-clear]');
+    if (replyDrawingClear) {
+      event.preventDefault();
+      clearReplyDrawing(replyDrawingClear.dataset.replyDrawingClear);
       return;
     }
     const replyDeleteButton = event.target.closest('[data-delete-reply-id]');

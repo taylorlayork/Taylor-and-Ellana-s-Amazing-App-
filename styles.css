@@ -3453,3 +3453,121 @@ button {
   .poster-reply-delete { margin-left: 0; }
   .poster-reply-form > div button { flex: 1 1 8.5rem; }
 }
+
+/* v57 clean: standalone top safe area, Facebook-style hideable nav, reply drawing, reply reactions */
+body.is-standalone-app {
+  padding-top: max(20px, env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: calc(6.6rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+body.is-standalone-app .app {
+  padding-top: max(.75rem, env(safe-area-inset-top, 0px)) !important;
+}
+body.is-standalone-app .hero {
+  margin-top: 0 !important;
+}
+.bottom-tabbar,
+body.is-standalone-app .bottom-tabbar {
+  bottom: max(.65rem, env(safe-area-inset-bottom, 0px)) !important;
+}
+@media (hover: none) and (pointer: coarse) {
+  .bottom-tabbar { bottom: max(.65rem, env(safe-area-inset-bottom, 0px)) !important; }
+  body.is-standalone-app .bottom-tabbar { bottom: max(.65rem, env(safe-area-inset-bottom, 0px)) !important; }
+}
+body.nav-hidden-on-scroll .bottom-tabbar,
+body.is-standalone-app.nav-hidden-on-scroll .bottom-tabbar {
+  transform: translateY(calc(120% + env(safe-area-inset-bottom, 0px))) scale(.985) !important;
+  opacity: .18;
+  pointer-events: none;
+}
+body.nav-visible-on-scroll .bottom-tabbar,
+body:not(.nav-hidden-on-scroll) .bottom-tabbar {
+  transform: translateY(0) scale(1) !important;
+  opacity: 1;
+}
+.poster-post-meta {
+  align-items: flex-start !important;
+}
+.poster-post-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .45rem;
+  flex-shrink: 0;
+}
+.reply-extra-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+}
+.poster-reply-attach-toggle,
+.poster-reply-drawing-toggle {
+  min-height: 2.2rem;
+  padding: .5rem .75rem;
+}
+.reply-drawing-panel {
+  border: 1px solid rgba(236,72,153,.2);
+  border-radius: 1rem;
+  padding: .65rem;
+  background: rgba(255,255,255,.38);
+  display: grid;
+  gap: .55rem;
+}
+.reply-drawing-panel[hidden] { display: none !important; }
+.reply-drawing-canvas {
+  width: 100%;
+  height: min(34vh, 270px);
+  min-height: 210px;
+  border: 1px solid rgba(236,72,153,.28);
+  border-radius: .9rem;
+  background: #fffafc;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 10px 24px rgba(45,51,69,.08);
+  touch-action: none;
+  cursor: crosshair;
+}
+.reply-drawing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  justify-content: flex-start;
+}
+.reply-drawing-panel.is-fullscreen {
+  position: fixed;
+  inset: max(.5rem, env(safe-area-inset-top, 0px)) .5rem max(.5rem, env(safe-area-inset-bottom, 0px));
+  z-index: 1400;
+  background: linear-gradient(180deg, rgba(255,251,253,.98), rgba(247,244,255,.98));
+  border-radius: 1.35rem;
+  padding: .85rem;
+  box-shadow: 0 24px 70px rgba(15,23,42,.30);
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+.reply-drawing-panel.is-fullscreen .reply-drawing-canvas {
+  height: 100%;
+  min-height: 60vh;
+}
+body.reply-drawing-fullscreen-open {
+  overflow: hidden;
+}
+body.reply-drawing-fullscreen-open .bottom-tabbar {
+  display: none !important;
+}
+.poster-reply-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .55rem;
+  align-items: baseline;
+}
+.poster-reply-reactions {
+  margin-top: .45rem;
+  padding-top: .35rem;
+  border-top: 1px solid rgba(255,255,255,.44);
+}
+.poster-reply-react-button {
+  min-width: 2.15rem;
+  min-height: 2rem;
+}
+@media (max-width: 560px) {
+  .poster-post-meta { display: flex !important; }
+  .poster-post-actions { flex-wrap: nowrap; }
+}
