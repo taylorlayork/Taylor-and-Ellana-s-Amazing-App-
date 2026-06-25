@@ -2617,18 +2617,30 @@ function initPosterComposerToggle() {
 }
 
 const FEELING_OPTIONS = [
-  { emoji: '🥰', label: 'Loved' },
   { emoji: '😊', label: 'Happy' },
   { emoji: '😌', label: 'Calm' },
+  { emoji: '🙂', label: 'Normal / fine' },
+  { emoji: '🥰', label: 'Loved' },
+  { emoji: '🫶', label: 'Missing you' },
   { emoji: '🥺', label: 'Tender' },
-  { emoji: '😔', label: 'Sad' },
-  { emoji: '😰', label: 'Anxious' },
-  { emoji: '😤', label: 'Frustrated' },
-  { emoji: '😴', label: 'Tired' },
+  { emoji: '😄', label: 'Excited' },
   { emoji: '🤪', label: 'Silly' },
+  { emoji: '😇', label: 'Grateful' },
+  { emoji: '😌', label: 'Relieved' },
+  { emoji: '😔', label: 'Sad' },
+  { emoji: '😢', label: 'Hurt' },
+  { emoji: '😞', label: 'Lonely' },
+  { emoji: '😰', label: 'Anxious' },
+  { emoji: '😵‍💫', label: 'Overwhelmed' },
+  { emoji: '😕', label: 'Confused' },
+  { emoji: '😤', label: 'Frustrated' },
+  { emoji: '😡', label: 'Angry' },
+  { emoji: '😒', label: 'Annoyed' },
+  { emoji: '😴', label: 'Tired' },
+  { emoji: '🤒', label: 'Sick' },
+  { emoji: '😶', label: 'Quiet' },
   { emoji: '💭', label: 'Thinking' },
-  { emoji: '🔥', label: 'Motivated' },
-  { emoji: '🫶', label: 'Missing you' }
+  { emoji: '🔥', label: 'Motivated' }
 ];
 let selectedFeeling = FEELING_OPTIONS[1]?.label || 'Happy';
 let feelingsRows = [];
@@ -2667,8 +2679,9 @@ function renderFeelings() {
     return items.slice(0, 40).map(row => {
       const option = feelingOptionFor(row.emotion || row.feeling);
       const date = row.created_at ? new Date(row.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
-      const note = row.note ? `<p>${escapeHtml(row.note)}</p>` : '';
-      return `<div class="feeling-entry"><div class="feeling-entry-main"><span class="emoji">${escapeHtml(option.emoji)}</span><span>${escapeHtml(option.label)}</span></div><time>${escapeHtml(date)}</time>${note}</div>`;
+      const canDelete = row.author === posterAuthor();
+      const deleteButton = canDelete ? `<button type="button" class="delete-feeling-button" data-delete-feeling-id="${escapeHtml(row.id)}" aria-label="Delete feeling">Delete</button>` : '';
+      return `<div class="feeling-entry" data-feeling-id="${escapeHtml(row.id)}"><div class="feeling-entry-top"><div class="feeling-entry-main"><span class="emoji">${escapeHtml(option.emoji)}</span><span>${escapeHtml(option.label)}</span></div>${deleteButton}</div><time>${escapeHtml(date)}</time></div>`;
     }).join('');
   };
   const taylor = $('#feelingsTaylor');
@@ -2705,22 +2718,41 @@ async function saveFeeling() {
     return;
   }
   const author = posterAuthor();
-  const note = ($('#feelingNote')?.value || '').trim();
   try {
     setFeelingsStatus('Adding feeling…');
     const { error } = await client.from('feelings').insert({
       author,
       emotion: selectedFeeling,
       feeling: selectedFeeling,
-      note: note || null
+      note: null
     });
     if (error) throw error;
-    const noteEl = $('#feelingNote');
-    if (noteEl) noteEl.value = '';
     await loadFeelings({ silent: true });
     setFeelingsStatus('Feeling added.');
   } catch (error) {
     setFeelingsStatus(error.message || 'Could not add feeling. Run the updated supabase-setup.sql.', true);
+  }
+}
+async function deleteFeeling(feelingId) {
+  const client = getPosterClient();
+  if (!client || !feelingId) {
+    setFeelingsStatus('Finish Supabase setup first so feelings can sync.', true);
+    return;
+  }
+  const row = feelingsRows.find(item => String(item.id) === String(feelingId));
+  if (row && row.author !== posterAuthor()) {
+    setFeelingsStatus('You can only delete feelings from your own column.', true);
+    return;
+  }
+  try {
+    setFeelingsStatus('Deleting feeling…');
+    const { error } = await client.from('feelings').delete().eq('id', feelingId);
+    if (error) throw error;
+    feelingsRows = feelingsRows.filter(item => String(item.id) !== String(feelingId));
+    renderFeelings();
+    setFeelingsStatus('Feeling deleted.');
+  } catch (error) {
+    setFeelingsStatus(error.message || 'Could not delete feeling. Run the updated supabase-setup.sql.', true);
   }
 }
 function subscribeFeelingsRealtime() {
@@ -2813,6 +2845,12 @@ function attachEvents() {
     if (noteToggle) {
       event.preventDefault();
       togglePosterNote(noteToggle.dataset.noteTarget, noteToggle);
+      return;
+    }
+    const deleteFeelingButton = event.target.closest('[data-delete-feeling-id]');
+    if (deleteFeelingButton) {
+      event.preventDefault();
+      deleteFeeling(deleteFeelingButton.dataset.deleteFeelingId);
       return;
     }
     const feelingChoice = event.target.closest('[data-feeling-choice]');

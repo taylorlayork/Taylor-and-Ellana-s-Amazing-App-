@@ -276,3 +276,10 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - Fixed Feelings schema compatibility by writing both `emotion` and legacy `feeling`.
 - Updated Supabase setup to add/sync both columns and reload the PostgREST schema cache.
 - Updated visible version badge and service worker cache to v73-clean.
+
+## v74-clean-from-v56
+- Desktop/computer bottom navigation now stays visible and does not morph into the Home button while scrolling.
+- Removed optional notes from Feelings.
+- Expanded the Feelings choices with more emotions including Confused, Normal / fine, Angry, Annoyed, Hurt, Lonely, Overwhelmed, and more.
+- Added Delete buttons for feelings in your own column.
+- Updated visible version badge and service worker cache to v74-clean.
