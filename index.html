@@ -66,11 +66,12 @@
       </section>
 
       <section id="poster" class="panel page-section" data-tab-panel="poster">
-        <div class="section-title"><p class="eyebrow">Shared board</p><h2>Poster Board</h2><p>Post messages, phone photos, or finger drawings. Newest posts appear at the top automatically.</p></div>
-        <article class="card poster-composer">
+        <div class="section-title"><p class="eyebrow">Shared board</p><h2>Poster Board</h2><p>Tap + Post when you want to add a message, phone photo, or finger drawing. Newest posts stay at the top.</p></div>
+        <div class="poster-toggle-row"><button id="togglePosterComposer" class="poster-toggle-button" type="button" aria-expanded="false" aria-controls="posterComposer">+ Post</button></div>
+        <article id="posterComposer" class="card poster-composer poster-composer-collapsed" hidden>
           <div id="posterSetupNotice" class="poster-setup-notice" hidden></div>
           <div class="poster-form-grid">
-            <label>Who is posting?<select id="posterAuthor"><option value="Taylor">Taylor</option><option value="Ellana">Ellana</option></select></label>
+            <label>Who is posting?<select id="posterAuthor"><option value="Ellana" selected>Ellana</option><option value="Taylor">Taylor</option></select></label>
             <label class="full">Message<textarea id="posterMessage" rows="3" placeholder="Write something sweet, funny, random, or dramatic…"></textarea></label>
             <div class="actions compact-actions full"><button id="postMessageBtn" type="button">Post message</button></div>
           </div>

@@ -105,3 +105,16 @@ Poster Board Supabase setup
 6. Upload/commit the full website again.
 
 After that, the Poster Board tab can post messages, photos, and drawings. New posts are loaded newest-first and Supabase Realtime pushes new posts to the top automatically.
+
+
+v40 notes: bottom navigation is forced to 5 side-by-side buttons on desktop and iPhone/Home Screen, service-worker cache updated to v40, Supabase config is included as an app-shell asset, and drawing canvas pointer coordinates now scale correctly across the full canvas width.
+
+
+## v41 Poster Board update
+- The newest Poster Board post now appears above the composer at the very top of the Poster Board page.
+- The remaining older posts appear below the submission area.
+- The poster name defaults to Ellana on a new device/browser and remembers the last selected name in localStorage.
+- Posts can be deleted from the board. Re-run `supabase-setup.sql` in Supabase so the new DELETE policies are added.
+
+
+Version 42 update: Poster Board composer is collapsed by default behind a + Post button; posts now appear below the button with newest first.

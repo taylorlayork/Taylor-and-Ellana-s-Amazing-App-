@@ -27,6 +27,12 @@ with check (
   and kind in ('message', 'photo', 'drawing')
 );
 
+drop policy if exists "Poster board posts can be deleted" on public.poster_posts;
+create policy "Poster board posts can be deleted"
+on public.poster_posts
+for delete
+using (true);
+
 insert into storage.buckets (id, name, public)
 values ('poster-media', 'poster-media', true)
 on conflict (id) do update set public = true;
@@ -42,6 +48,12 @@ create policy "Poster media can be uploaded"
 on storage.objects
 for insert
 with check (bucket_id = 'poster-media');
+
+drop policy if exists "Poster media can be deleted" on storage.objects;
+create policy "Poster media can be deleted"
+on storage.objects
+for delete
+using (bucket_id = 'poster-media');
 
 -- Let Supabase Realtime broadcast new poster_posts rows.
 do $$

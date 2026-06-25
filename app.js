@@ -1401,6 +1401,7 @@ function initBottomTabs() {
 
 
 const POSTER_BUCKET = 'poster-media';
+const POSTER_AUTHOR_KEY = 'across.posterAuthor';
 let posterClient = null;
 let posterChannel = null;
 let posterSeenIds = new Set();
@@ -1448,29 +1449,30 @@ function posterImageUrl(path) {
   const { data } = client.storage.from(POSTER_BUCKET).getPublicUrl(path);
   return data?.publicUrl || '';
 }
-function posterPostHtml(post) {
+function posterPostHtml(post, options = {}) {
   const safeAuthor = escapeHtml(post.author || 'Someone');
   const date = post.created_at ? new Date(post.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
-  const meta = `<div class="poster-post-meta"><strong>${safeAuthor}</strong><span>${escapeHtml(date)}</span></div>`;
+  const imagePath = post.image_path || '';
+  const deleteButton = post.id ? `<button type="button" class="poster-delete-button" data-delete-poster-id="${escapeHtml(post.id)}" data-delete-image-path="${escapeHtml(imagePath)}" aria-label="Delete this post">Delete</button>` : '';
+  const meta = `<div class="poster-post-meta"><div><strong>${safeAuthor}</strong><span>${escapeHtml(date)}</span></div>${deleteButton}</div>`;
+  const latestClass = options.latest ? ' latest-post' : '';
   if (post.kind === 'message') {
-    return `<article class="poster-post card message-post">${meta}<p>${escapeHtml(post.body || '')}</p></article>`;
+    return `<article class="poster-post card message-post${latestClass}">${meta}<p>${escapeHtml(post.body || '')}</p></article>`;
   }
   const url = posterImageUrl(post.image_path);
-  return `<article class="poster-post card media-post">${meta}<img src="${escapeHtml(url)}" alt="${escapeHtml(post.kind)} from ${safeAuthor}" loading="lazy" /></article>`;
+  return `<article class="poster-post card media-post${latestClass}">${meta}<img src="${escapeHtml(url)}" alt="${escapeHtml(post.kind)} from ${safeAuthor}" loading="lazy" /></article>`;
 }
 function renderPosterFeed(posts = []) {
   const feed = $('#posterFeed');
   if (!feed) return;
   posterSeenIds = new Set(posts.map(post => post.id).filter(Boolean));
-  feed.innerHTML = posts.length ? posts.map(posterPostHtml).join('') : '<article class="poster-empty card"><strong>No posts yet.</strong><p>Be the first to post a message, photo, or drawing.</p></article>';
+  feed.innerHTML = posts.length
+    ? posts.map((post, index) => posterPostHtml(post, { latest: index === 0 })).join('')
+    : '<article class="poster-empty card"><strong>No posts yet.</strong><p>Tap + Post to add the first message, photo, or drawing.</p></article>';
 }
 function addPosterPostToTop(post) {
-  const feed = $('#posterFeed');
-  if (!feed || !post?.id || posterSeenIds.has(post.id)) return;
-  posterSeenIds.add(post.id);
-  const empty = feed.querySelector('.poster-empty');
-  if (empty) empty.remove();
-  feed.insertAdjacentHTML('afterbegin', posterPostHtml(post));
+  if (!post?.id || posterSeenIds.has(post.id)) return;
+  loadPosterPosts();
 }
 async function loadPosterPosts() {
   showPosterSetupNotice();
@@ -1495,10 +1497,26 @@ function subscribePosterRealtime() {
   posterChannel = client
     .channel('poster-board')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poster_posts' }, payload => addPosterPostToTop(payload.new))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'poster_posts' }, () => loadPosterPosts())
     .subscribe();
 }
+function loadPosterAuthor() {
+  const saved = localStorage.getItem(POSTER_AUTHOR_KEY);
+  return saved === 'Taylor' || saved === 'Ellana' ? saved : 'Ellana';
+}
+function savePosterAuthor(value) {
+  if (value === 'Taylor' || value === 'Ellana') localStorage.setItem(POSTER_AUTHOR_KEY, value);
+}
+function initPosterAuthorPicker() {
+  const select = $('#posterAuthor');
+  if (!select) return;
+  select.value = loadPosterAuthor();
+  select.addEventListener('change', () => savePosterAuthor(select.value));
+}
 function posterAuthor() {
-  return $('#posterAuthor')?.value || 'Taylor';
+  const value = $('#posterAuthor')?.value || loadPosterAuthor();
+  savePosterAuthor(value);
+  return value || 'Ellana';
 }
 function cleanFileName(name = 'upload') {
   return String(name).replace(/[^a-z0-9._-]+/gi, '-').slice(-90);
@@ -1540,6 +1558,7 @@ async function postPosterMessage() {
     input.value = '';
     setPosterStatus('Posted!');
     await loadPosterPosts();
+    setPosterComposerOpen(false);
   } catch (error) {
     setPosterStatus(error.message, true);
   }
@@ -1579,6 +1598,7 @@ async function postPosterPhoto() {
     input.value = '';
     setPosterStatus('Photo posted!');
     await loadPosterPosts();
+    setPosterComposerOpen(false);
   } catch (error) {
     setPosterStatus(error.message, true);
   }
@@ -1588,25 +1608,30 @@ function setupDrawingCanvas() {
   if (!canvas) return;
   const resize = () => {
     const rect = canvas.getBoundingClientRect();
-    const width = Math.max(280, Math.round(rect.width || 600));
-    const height = Math.max(240, Math.round(rect.height || 320));
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    const cssWidth = Math.max(280, Math.round(rect.width || 600));
+    const cssHeight = Math.max(240, Math.round(rect.height || 320));
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
     drawingContext = canvas.getContext('2d');
-    drawingContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawingContext.setTransform(1, 0, 0, 1, 0, 0);
     drawingContext.fillStyle = '#fffafc';
-    drawingContext.fillRect(0, 0, width, height);
+    drawingContext.fillRect(0, 0, canvas.width, canvas.height);
     drawingContext.lineCap = 'round';
     drawingContext.lineJoin = 'round';
-    drawingContext.lineWidth = 7;
+    drawingContext.lineWidth = Math.max(5, 7 * dpr);
     drawingContext.strokeStyle = '#ec4899';
     drawingHasInk = false;
   };
   resize();
   const point = event => {
     const rect = canvas.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const scaleX = canvas.width / Math.max(1, rect.width);
+    const scaleY = canvas.height / Math.max(1, rect.height);
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY
+    };
   };
   canvas.addEventListener('pointerdown', event => {
     event.preventDefault();
@@ -1615,6 +1640,8 @@ function setupDrawingCanvas() {
     const p = point(event);
     drawingContext.beginPath();
     drawingContext.moveTo(p.x, p.y);
+    drawingContext.lineTo(p.x + 0.01, p.y + 0.01);
+    drawingContext.stroke();
   });
   canvas.addEventListener('pointermove', event => {
     if (drawingPointerId !== event.pointerId) return;
@@ -1630,7 +1657,9 @@ function setupDrawingCanvas() {
   };
   canvas.addEventListener('pointerup', stop);
   canvas.addEventListener('pointercancel', stop);
+  canvas.addEventListener('lostpointercapture', stop);
   $('#clearDrawingBtn')?.addEventListener('click', resize);
+  window.addEventListener('orientationchange', () => window.setTimeout(resize, 350));
 }
 async function postPosterDrawing() {
   const canvas = $('#drawingCanvas');
@@ -1646,11 +1675,54 @@ async function postPosterDrawing() {
     $('#clearDrawingBtn')?.click();
     setPosterStatus('Drawing posted!');
     await loadPosterPosts();
+    setPosterComposerOpen(false);
   } catch (error) {
     setPosterStatus(error.message, true);
   }
 }
+
+async function deletePosterPost(postId, imagePath = '') {
+  const client = getPosterClient();
+  if (!client || !postId) {
+    showPosterSetupNotice();
+    return;
+  }
+  const ok = confirm('Delete this Poster Board post?');
+  if (!ok) return;
+  try {
+    setPosterStatus('Deleting post…');
+    const { error } = await client.from('poster_posts').delete().eq('id', postId);
+    if (error) throw error;
+    if (imagePath) {
+      await client.storage.from(POSTER_BUCKET).remove([imagePath]).catch(() => {});
+    }
+    setPosterStatus('Deleted.');
+    await loadPosterPosts();
+  } catch (error) {
+    setPosterStatus(error.message || 'Could not delete post.', true);
+  }
+}
+function setPosterComposerOpen(open) {
+  const composer = $('#posterComposer');
+  const button = $('#togglePosterComposer');
+  if (!composer || !button) return;
+  composer.hidden = !open;
+  composer.classList.toggle('poster-composer-collapsed', !open);
+  composer.classList.toggle('poster-composer-open', open);
+  button.setAttribute('aria-expanded', String(open));
+  button.textContent = open ? '− Close Post' : '+ Post';
+}
+function togglePosterComposer() {
+  const composer = $('#posterComposer');
+  setPosterComposerOpen(Boolean(composer?.hidden));
+}
+function initPosterComposerToggle() {
+  setPosterComposerOpen(false);
+  onIf('#togglePosterComposer', 'click', togglePosterComposer);
+}
 function initPosterBoard() {
+  initPosterAuthorPicker();
+  initPosterComposerToggle();
   setupDrawingCanvas();
   showPosterSetupNotice();
   if (hasPosterConfig()) {
@@ -1704,6 +1776,10 @@ function attachEvents() {
         renderTimes();
         renderCallWindows();
       }
+    }
+    const deleteButton = event.target.closest('[data-delete-poster-id]');
+    if (deleteButton) {
+      deletePosterPost(deleteButton.dataset.deletePosterId, deleteButton.dataset.deleteImagePath || '');
     }
   });
   setInterval(() => { renderTimes(); renderCallWindows(); }, 1000);

@@ -2722,3 +2722,166 @@ body.is-standalone-app {
   #drawingCanvas { height: 300px; }
   .poster-post-meta { display: grid; gap: .15rem; }
 }
+
+
+/* v40: five-button bottom directory + accurate drawing canvas coordinates */
+.bottom-tabbar {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  width: min(980px, calc(100% - 1rem)) !important;
+  --tab-indicator-w: calc((100% - 1.7rem) / 5);
+}
+.tab-slab {
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+.tab-slab span {
+  max-width: 100%;
+}
+#drawingCanvas {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+@media (min-width: 781px) {
+  .bottom-tabbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    width: min(980px, calc(100% - 2rem)) !important;
+    gap: .34rem !important;
+  }
+  .tab-slab {
+    font-size: clamp(.68rem, .9vw, .82rem) !important;
+    padding-left: .24rem !important;
+    padding-right: .24rem !important;
+  }
+}
+@media (max-width: 780px) {
+  .bottom-tabbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    width: min(100% - .5rem, 720px) !important;
+    gap: .18rem !important;
+    padding: .28rem !important;
+  }
+  .tab-slab {
+    min-height: 3.08rem !important;
+    font-size: clamp(.48rem, 2.05vw, .64rem) !important;
+    letter-spacing: -.045em !important;
+    padding: .32rem .08rem !important;
+    border-radius: .78rem !important;
+  }
+  .tab-slab::before {
+    font-size: .82rem !important;
+    margin-bottom: .12rem !important;
+  }
+}
+@media (max-width: 390px) {
+  .tab-slab {
+    min-height: 2.95rem !important;
+    font-size: .46rem !important;
+  }
+  .tab-slab::before {
+    font-size: .76rem !important;
+  }
+}
+
+
+/* v41: newest poster spotlight + saved author + delete buttons */
+.poster-latest {
+  display: grid;
+  gap: .55rem;
+  margin-bottom: 1rem;
+}
+.poster-latest:empty { display: none; }
+.poster-latest-label {
+  display: inline-flex;
+  justify-self: start;
+  padding: .32rem .65rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(236,72,153,.18), rgba(20,184,166,.14));
+  border: 1px solid rgba(236,72,153,.24);
+  color: var(--brand2);
+  font-size: .78rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.poster-post.latest-post {
+  border-color: rgba(236,72,153,.34);
+  box-shadow: 0 18px 45px rgba(236,72,153,.12), inset 0 1px 0 rgba(255,255,255,.52);
+}
+.poster-post-meta > div {
+  display: grid;
+  gap: .12rem;
+}
+.poster-post-meta span { display: block; }
+.poster-delete-button {
+  appearance: none;
+  border: 1px solid rgba(201,71,96,.24);
+  border-radius: 999px;
+  padding: .38rem .62rem;
+  background: rgba(201,71,96,.08);
+  color: #a13f55;
+  font-size: .76rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45);
+}
+.poster-delete-button:hover,
+.poster-delete-button:focus-visible {
+  background: rgba(201,71,96,.15);
+  outline: none;
+  border-color: rgba(201,71,96,.38);
+}
+.poster-rest-empty {
+  text-align: center;
+  margin: .8rem 0 0;
+  font-weight: 780;
+}
+@media (max-width: 560px) {
+  .poster-post-meta {
+    align-items: start;
+  }
+  .poster-delete-button {
+    justify-self: start;
+  }
+}
+
+
+/* v42: collapsed Poster Board composer with + Post button */
+.poster-toggle-row {
+  display: flex;
+  justify-content: center;
+  margin: .25rem 0 1rem;
+}
+.poster-toggle-button {
+  width: min(100%, 30rem);
+  min-height: 3.4rem;
+  border-radius: 999px;
+  font-size: clamp(1.2rem, 3.5vw, 1.85rem);
+  font-weight: 950;
+  letter-spacing: -.035em;
+  background: linear-gradient(135deg, var(--brand2), var(--accent), var(--brand));
+  box-shadow: 0 18px 44px rgba(139,92,246,.22), inset 0 1px 0 rgba(255,255,255,.45);
+}
+.poster-toggle-button[aria-expanded="true"] {
+  background: linear-gradient(135deg, rgba(31,35,49,.92), rgba(139,92,246,.82));
+}
+.poster-composer[hidden] { display: none !important; }
+.poster-composer.poster-composer-open {
+  margin-bottom: 1rem;
+  animation: posterComposerOpen .22s ease-out;
+}
+.poster-feed { margin-top: .65rem; }
+.poster-post.latest-post {
+  border-color: rgba(236,72,153,.38);
+  box-shadow: 0 20px 46px rgba(236,72,153,.12), inset 0 1px 0 rgba(255,255,255,.5);
+}
+@keyframes posterComposerOpen {
+  from { opacity: 0; transform: translateY(-8px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 560px) {
+  .poster-toggle-row { position: sticky; top: .65rem; z-index: 5; }
+  .poster-toggle-button { min-height: 3.2rem; }
+}
