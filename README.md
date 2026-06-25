@@ -181,3 +181,9 @@ Version 52 updates the public GitHub Pages URL references to https://taylorlayor
 - Uses a clean absolute JPEG Open Graph image URL (`preview-image.jpg`) first for Messenger/Facebook previews, with PNG as backup.
 - Removes the `?v=53` query string from the social preview image metadata.
 - Updates the service worker cache to `across-static-v56`.
+
+
+## v58 clean notes
+- Fixes call alert flashing so it calms after ~2 seconds.
+- Nav now morphs into a bottom-left home button while scrolling down, then expands on tap/scroll-up.
+- Reply drawing fullscreen sizing and Done button behavior improved.

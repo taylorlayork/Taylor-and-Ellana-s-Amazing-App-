@@ -3571,3 +3571,110 @@ body.reply-drawing-fullscreen-open .bottom-tabbar {
   .poster-post-meta { display: flex !important; }
   .poster-post-actions { flex-wrap: nowrap; }
 }
+
+
+/* v58 clean: call alert truly calms, nav morphs to home button, fixed reply drawing fullscreen */
+.countdown-card.active.is-calm,
+.countdown-card.active.is-calm::before,
+.countdown-card.active.is-calm .call-now-banner,
+.countdown-card.active.is-calm .call-now-banner small,
+.active-call-window.is-calm,
+.active-call-window.is-calm * {
+  animation: none !important;
+}
+.call-now-banner.is-calm,
+.call-now-banner.is-calm small {
+  animation: none !important;
+  filter: none !important;
+}
+.nav-home-button {
+  position: fixed;
+  left: max(1rem, env(safe-area-inset-left, 0px) + .85rem);
+  bottom: max(.9rem, env(safe-area-inset-bottom, 0px) + .7rem);
+  z-index: 1205;
+  width: 3.35rem;
+  height: 3.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.52);
+  background: linear-gradient(135deg, rgba(139,92,246,.95), rgba(236,72,153,.9));
+  color: #fff;
+  font-size: 1.7rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 18px 42px rgba(45,51,69,.26), inset 0 1px 0 rgba(255,255,255,.52);
+  transform: translateY(1rem) scale(.72) rotate(-8deg);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .38s cubic-bezier(.2,.9,.2,1), opacity .28s ease, box-shadow .28s ease;
+}
+.nav-home-button[hidden] { display: grid !important; }
+body.nav-compact-on-scroll .nav-home-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1) rotate(0deg);
+}
+body.nav-compact-on-scroll .nav-home-button:active {
+  transform: translateY(1px) scale(.94);
+}
+body.nav-compact-on-scroll .bottom-tabbar,
+body.is-standalone-app.nav-compact-on-scroll .bottom-tabbar,
+body.nav-hidden-on-scroll .bottom-tabbar,
+body.is-standalone-app.nav-hidden-on-scroll .bottom-tabbar {
+  transform: translate(-36%, calc(115% + env(safe-area-inset-bottom, 0px))) scale(.18) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  filter: blur(5px) saturate(.8);
+  transition: transform .42s cubic-bezier(.2,.9,.2,1), opacity .26s ease, filter .26s ease !important;
+}
+body.nav-open-from-home .bottom-tabbar,
+body.nav-visible-on-scroll .bottom-tabbar,
+body:not(.nav-compact-on-scroll) .bottom-tabbar {
+  transform: translateY(0) scale(1) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  filter: none;
+  transition: transform .42s cubic-bezier(.2,.9,.2,1), opacity .26s ease, filter .26s ease !important;
+}
+body.nav-open-from-home .nav-home-button,
+body:not(.nav-compact-on-scroll) .nav-home-button {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(1rem) scale(.72) rotate(-8deg);
+}
+.reply-drawing-panel.is-fullscreen {
+  position: fixed !important;
+  inset: max(.65rem, env(safe-area-inset-top, 0px)) max(.55rem, env(safe-area-inset-right, 0px) + .55rem) max(.65rem, env(safe-area-inset-bottom, 0px)) max(.55rem, env(safe-area-inset-left, 0px) + .55rem) !important;
+  z-index: 5005 !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  gap: .7rem !important;
+  box-sizing: border-box !important;
+  max-height: calc(100dvh - max(1.3rem, env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))) !important;
+  overflow: hidden !important;
+}
+.reply-drawing-panel.is-fullscreen .reply-drawing-canvas {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  align-self: stretch !important;
+  display: block !important;
+}
+.reply-drawing-panel.is-fullscreen .reply-drawing-actions {
+  position: relative !important;
+  z-index: 2 !important;
+  background: rgba(255,255,255,.72);
+  border-radius: 1rem;
+  padding: .45rem;
+  box-shadow: 0 10px 28px rgba(15,23,42,.10);
+}
+.reply-drawing-panel.is-fullscreen [data-reply-drawing-fullscreen] {
+  background: linear-gradient(135deg, rgba(16,185,129,.95), rgba(45,212,191,.9)) !important;
+  color: white !important;
+  border-color: rgba(255,255,255,.55) !important;
+}
+body.reply-drawing-fullscreen-open .bottom-tabbar,
+body.reply-drawing-fullscreen-open .nav-home-button {
+  display: none !important;
+}

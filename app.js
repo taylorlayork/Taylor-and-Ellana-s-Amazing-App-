@@ -30,7 +30,10 @@ const $ = (selector) => document.querySelector(selector);
 
 
 const CALL_ALERT_CALM_KEY = 'across.callAlertCalmedWindow';
-function currentWindowKey(window) { return window?.start instanceof Date ? window.start.toISOString() : ''; }
+function currentWindowKey(window) {
+  if (window?.end instanceof Date) return `until-${window.end.toISOString()}`;
+  return window?.start instanceof Date ? `from-${window.start.toISOString()}` : '';
+}
 function isCallAlertCalmed(window) {
   const key = currentWindowKey(window);
   return Boolean(key && localStorage.getItem(CALL_ALERT_CALM_KEY) === key);
@@ -42,7 +45,19 @@ function calmCallAlert(window) {
 function shouldFlashCallAlert(window, overlapNow) {
   if (!window || !overlapNow) return false;
   if (isCallAlertCalmed(window)) return false;
-  return Date.now() - window.start.getTime() < 2000;
+  const key = currentWindowKey(window);
+  if (!key) return false;
+  const flashKey = `across.callAlertFlashStarted.${key}`;
+  let started = Number(sessionStorage.getItem(flashKey) || 0);
+  if (!Number.isFinite(started) || started <= 0) {
+    started = Date.now();
+    sessionStorage.setItem(flashKey, String(started));
+  }
+  if (Date.now() - started >= 2000) {
+    calmCallAlert(window);
+    return false;
+  }
+  return true;
 }
 function callNowBannerHtml(window, shouldFlash) {
   const attrs = shouldFlash ? ' data-calm-call-alert="1"' : '';
@@ -1252,8 +1267,17 @@ function markStandaloneDisplayMode() {
 
 
 function initStandaloneNavAutoHide(tabbar) {
+  const homeButton = $('#navHomeButton');
   if (!tabbar || tabbar.dataset.autoHideReady) return;
   tabbar.dataset.autoHideReady = '1';
+  if (homeButton) {
+    homeButton.hidden = false;
+    homeButton.addEventListener('click', () => {
+      document.body.classList.remove('nav-compact-on-scroll', 'nav-hidden-on-scroll');
+      document.body.classList.add('nav-open-from-home', 'nav-visible-on-scroll');
+      window.setTimeout(() => document.body.classList.remove('nav-open-from-home'), 4200);
+    });
+  }
   let lastY = window.scrollY || 0;
   let ticking = false;
   window.addEventListener('scroll', () => {
@@ -1263,12 +1287,13 @@ function initStandaloneNavAutoHide(tabbar) {
       const y = window.scrollY || 0;
       const diff = y - lastY;
       if (Math.abs(diff) > 7) {
-        const shouldHide = diff > 0 && y > 80;
-        document.body.classList.toggle('nav-hidden-on-scroll', shouldHide);
-        document.body.classList.toggle('nav-visible-on-scroll', !shouldHide);
+        const compact = diff > 0 && y > 80;
+        document.body.classList.toggle('nav-compact-on-scroll', compact);
+        document.body.classList.toggle('nav-visible-on-scroll', !compact);
+        if (!compact) document.body.classList.remove('nav-open-from-home');
         lastY = y;
       }
-      if (y < 8) document.body.classList.remove('nav-hidden-on-scroll');
+      if (y < 8) document.body.classList.remove('nav-compact-on-scroll', 'nav-hidden-on-scroll');
       ticking = false;
     });
   }, { passive: true });
@@ -2198,9 +2223,16 @@ function setReplyDrawingFullscreen(postId, open) {
   const wantsOpen = Boolean(open);
   if (wantsOpen) replyDrawingScrollY = window.scrollY || 0;
   panel.classList.toggle('is-fullscreen', wantsOpen);
+  panel.setAttribute('aria-modal', wantsOpen ? 'true' : 'false');
   document.body.classList.toggle('reply-drawing-fullscreen-open', wantsOpen);
-  if (button) button.textContent = wantsOpen ? 'Done full-screen' : 'Full-screen draw';
-  window.setTimeout(() => replyCanvasState.get(canvas)?.resize?.({ preserve: true }), 50);
+  if (button) {
+    button.textContent = wantsOpen ? 'Done full-screen' : 'Full-screen draw';
+    button.setAttribute('aria-pressed', String(wantsOpen));
+  }
+  const resize = () => replyCanvasState.get(canvas)?.resize?.({ preserve: true });
+  requestAnimationFrame(resize);
+  window.setTimeout(resize, 80);
+  window.setTimeout(resize, 220);
   if (!wantsOpen && Number.isFinite(replyDrawingScrollY)) window.setTimeout(() => window.scrollTo(0, replyDrawingScrollY), 0);
 }
 function clearReplyDrawing(postId) {
@@ -2530,6 +2562,12 @@ function attachEvents() {
     if (deleteButton) {
       deletePosterPost(deleteButton.dataset.deletePosterId, deleteButton.dataset.deleteImagePath || '');
     }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const openPanel = document.querySelector('.reply-drawing-panel.is-fullscreen');
+    const form = openPanel?.closest('[data-reply-form]');
+    if (form?.dataset?.replyForm) setReplyDrawingFullscreen(form.dataset.replyForm, false);
   });
   document.addEventListener('submit', event => {
     const replyForm = event.target.closest('[data-reply-form]');
