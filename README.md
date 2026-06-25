@@ -118,3 +118,6 @@ v40 notes: bottom navigation is forced to 5 side-by-side buttons on desktop and 
 
 
 Version 42 update: Poster Board composer is collapsed by default behind a + Post button; posts now appear below the button with newest first.
+
+
+v43 notes: Removed the Daily connection cue from Extras, added a full-screen drawing mode for phones, improved drawing resize preservation, and made Poster Board deletion verify that Supabase actually deleted the row. Re-run `supabase-setup.sql` in Supabase for the explicit DELETE grant/policy.

@@ -1,5 +1,6 @@
 -- Taylor & Ellana Poster Board setup for Supabase
 -- Paste this whole file into Supabase > SQL Editor > New query > Run.
+-- v43 includes explicit DELETE grants/policies for the Poster Board delete button.
 
 create table if not exists public.poster_posts (
   id uuid primary key default gen_random_uuid(),
@@ -11,6 +12,9 @@ create table if not exists public.poster_posts (
 );
 
 alter table public.poster_posts enable row level security;
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, delete on table public.poster_posts to anon, authenticated;
 
 drop policy if exists "Poster board posts are readable" on public.poster_posts;
 create policy "Poster board posts are readable"
@@ -54,6 +58,8 @@ create policy "Poster media can be deleted"
 on storage.objects
 for delete
 using (bucket_id = 'poster-media');
+
+alter table public.poster_posts replica identity full;
 
 -- Let Supabase Realtime broadcast new poster_posts rows.
 do $$

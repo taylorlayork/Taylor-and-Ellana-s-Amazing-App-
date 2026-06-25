@@ -1408,6 +1408,7 @@ let posterSeenIds = new Set();
 let drawingContext = null;
 let drawingHasInk = false;
 let drawingPointerId = null;
+let drawingResizeCanvas = null;
 
 function posterConfig() {
   return window.ACROSS_SUPABASE_CONFIG || {};
@@ -1606,7 +1607,14 @@ async function postPosterPhoto() {
 function setupDrawingCanvas() {
   const canvas = $('#drawingCanvas');
   if (!canvas) return;
-  const resize = () => {
+  const resize = (options = {}) => {
+    const preserve = options.preserve !== false && drawingHasInk && canvas.width && canvas.height;
+    const oldCanvas = preserve ? document.createElement('canvas') : null;
+    if (oldCanvas) {
+      oldCanvas.width = canvas.width;
+      oldCanvas.height = canvas.height;
+      oldCanvas.getContext('2d').drawImage(canvas, 0, 0);
+    }
     const rect = canvas.getBoundingClientRect();
     const cssWidth = Math.max(280, Math.round(rect.width || 600));
     const cssHeight = Math.max(240, Math.round(rect.height || 320));
@@ -1617,13 +1625,17 @@ function setupDrawingCanvas() {
     drawingContext.setTransform(1, 0, 0, 1, 0, 0);
     drawingContext.fillStyle = '#fffafc';
     drawingContext.fillRect(0, 0, canvas.width, canvas.height);
+    if (oldCanvas) {
+      drawingContext.drawImage(oldCanvas, 0, 0, canvas.width, canvas.height);
+    }
     drawingContext.lineCap = 'round';
     drawingContext.lineJoin = 'round';
     drawingContext.lineWidth = Math.max(5, 7 * dpr);
     drawingContext.strokeStyle = '#ec4899';
-    drawingHasInk = false;
+    if (!oldCanvas) drawingHasInk = false;
   };
-  resize();
+  drawingResizeCanvas = resize;
+  resize({ preserve: false });
   const point = event => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / Math.max(1, rect.width);
@@ -1642,6 +1654,7 @@ function setupDrawingCanvas() {
     drawingContext.moveTo(p.x, p.y);
     drawingContext.lineTo(p.x + 0.01, p.y + 0.01);
     drawingContext.stroke();
+    drawingHasInk = true;
   });
   canvas.addEventListener('pointermove', event => {
     if (drawingPointerId !== event.pointerId) return;
@@ -1658,8 +1671,21 @@ function setupDrawingCanvas() {
   canvas.addEventListener('pointerup', stop);
   canvas.addEventListener('pointercancel', stop);
   canvas.addEventListener('lostpointercapture', stop);
-  $('#clearDrawingBtn')?.addEventListener('click', resize);
-  window.addEventListener('orientationchange', () => window.setTimeout(resize, 350));
+  $('#clearDrawingBtn')?.addEventListener('click', () => resize({ preserve: false }));
+  window.addEventListener('orientationchange', () => window.setTimeout(() => resize({ preserve: true }), 350));
+  window.addEventListener('resize', () => window.setTimeout(() => resize({ preserve: true }), 120));
+}
+function setDrawingFullscreen(open) {
+  document.body.classList.toggle('drawing-fullscreen', Boolean(open));
+  const button = $('#expandDrawingBtn');
+  if (button) {
+    button.textContent = open ? 'Exit full-screen' : 'Full-screen draw';
+    button.setAttribute('aria-pressed', String(Boolean(open)));
+  }
+  window.setTimeout(() => drawingResizeCanvas?.({ preserve: true }), 80);
+}
+function toggleDrawingFullscreen() {
+  setDrawingFullscreen(!document.body.classList.contains('drawing-fullscreen'));
 }
 async function postPosterDrawing() {
   const canvas = $('#drawingCanvas');
@@ -1673,6 +1699,7 @@ async function postPosterDrawing() {
     const image_path = await uploadPosterBlob(blob, 'drawing', 'drawing.png');
     await createPosterPost({ author: posterAuthor(), kind: 'drawing', image_path });
     $('#clearDrawingBtn')?.click();
+    setDrawingFullscreen(false);
     setPosterStatus('Drawing posted!');
     await loadPosterPosts();
     setPosterComposerOpen(false);
@@ -1689,28 +1716,45 @@ async function deletePosterPost(postId, imagePath = '') {
   }
   const ok = confirm('Delete this Poster Board post?');
   if (!ok) return;
+  const button = document.querySelector(`[data-delete-poster-id="${CSS.escape(postId)}"]`);
+  const card = button?.closest('.poster-post');
   try {
-    setPosterStatus('Deleting post…');
-    const { error } = await client.from('poster_posts').delete().eq('id', postId);
-    if (error) throw error;
-    if (imagePath) {
-      await client.storage.from(POSTER_BUCKET).remove([imagePath]).catch(() => {});
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Deleting…';
     }
+    setPosterStatus('Deleting post…');
+    const { data, error } = await client.from('poster_posts').delete().eq('id', postId).select('id');
+    if (error) throw error;
+    if (Array.isArray(data) && data.length === 0) {
+      throw new Error('Delete did not go through. Run the updated supabase-setup.sql in Supabase so DELETE is allowed.');
+    }
+    if (imagePath) {
+      await client.storage.from(POSTER_BUCKET).remove([imagePath]);
+    }
+    card?.remove();
+    posterSeenIds.delete(postId);
     setPosterStatus('Deleted.');
     await loadPosterPosts();
   } catch (error) {
-    setPosterStatus(error.message || 'Could not delete post.', true);
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Delete';
+    }
+    setPosterStatus(error.message || 'Could not delete post. Run the updated supabase-setup.sql in Supabase and try again.', true);
   }
 }
 function setPosterComposerOpen(open) {
   const composer = $('#posterComposer');
   const button = $('#togglePosterComposer');
   if (!composer || !button) return;
+  if (!open) setDrawingFullscreen(false);
   composer.hidden = !open;
   composer.classList.toggle('poster-composer-collapsed', !open);
   composer.classList.toggle('poster-composer-open', open);
   button.setAttribute('aria-expanded', String(open));
   button.textContent = open ? '− Close Post' : '+ Post';
+  if (open) window.setTimeout(() => drawingResizeCanvas?.({ preserve: true }), 80);
 }
 function togglePosterComposer() {
   const composer = $('#posterComposer');
@@ -1764,6 +1808,7 @@ function attachEvents() {
   onIf('#postMessageBtn', 'click', postPosterMessage);
   onIf('#postPhotoBtn', 'click', postPosterPhoto);
   onIf('#postDrawingBtn', 'click', postPosterDrawing);
+  onIf('#expandDrawingBtn', 'click', toggleDrawingFullscreen);
   document.addEventListener('click', event => {
     const tempButton = event.target.closest('[data-temp-toggle]');
     if (tempButton) toggleWeatherUnit(tempButton.dataset.tempToggle);
